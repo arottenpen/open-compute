@@ -40,6 +40,9 @@ TS 源码、Bun、Node、Rolldown、用户 bundle、数据库、master key、S3 
 
 ## 构建与打包
 
+授权边界见根 [Operating Contract](../../AGENTS.md#operating-contract)。复用已验证输入，下载和发行包装须有明确授权；
+它们不属于默认本地检查。打包/部署确认所需信息见[发布流程](releasing.md)。
+
 构建机器需要 Rust 1.98、Bun 1.3.14、Git LFS 和锁定的 workspace 依赖。
 每个目标嵌入自己的 archive；不能把一个二进制横跨 OS/CPU 使用。
 当前正式目标为 Darwin ARM64、Linux GNU ARM64/x64。
@@ -56,6 +59,7 @@ cargo install mbx --version 1.22.0 --locked
 git submodule update --init --depth 1 third_party/gitserver third_party/workerd
 git lfs pull --include="share/pyodide/**,share/tessdata/**,share/xberg-tesseract-cache/**"
 bun install --frozen-lockfile --ignore-scripts
+mkdir -p "$PWD/.temp"
 runtime_inputs=$(mktemp -d "$PWD/.temp/runtime-inputs.XXXXXX")
 eval "$(bun scripts/prepare-workerd.ts --dest "$runtime_inputs/workerd" --download)"
 eval "$(bun scripts/prepare-caddy.ts --dest "$runtime_inputs/caddy" --download)"
@@ -75,10 +79,10 @@ Cargo build script 检查目标、workerd/Pyodide/Caddy 压缩包与解压字节
 、文件集合及源码/锁文件摘要，再把同一批已验证字节编入程序。
 检出目录使用 `packages/runtime/`，daemon 离线物化到 `<OCD_DIR>/cache/packages/`；`dist/` 必须显式构建。没有已校验构建输入时直接报错，不搜索 PATH 或其他缓存。
 
-在干净 checkout 中显式打包当前宿主目标：
+在干净 checkout 中，经授权显式下载正式输入并打包当前宿主目标：
 
 ```sh
-./scripts/package-release.sh --dest /abs/releases/ocd
+./scripts/package-release.sh --dest /abs/releases/ocd --download
 ```
 
 `--dest` 是一个必须不存在的文件，不是目录。打包脚本显式准备 lock 固定的 workerd 与 Caddy Release asset；也可通过
@@ -92,12 +96,6 @@ release identity，再 fsync、原子无覆盖发布单文件，输出大小与 
 GitHub Actions；所有资格校验成功后，三个正式平台分别运行同一打包脚本和正式单文件测试，聚合生成
 `release.json`/`SHA256SUMS`，以 Draft 上传并回读验证，最后才公开 GitHub Release。版本规则、
 精确 asset 名称、权限边界和失败处理见[版本与发布流程](releasing.md)。
-
-本地开发、测试和 CI 的输入准备可显式运行
-`bun scripts/prepare-workerd.ts --dest /abs/new-workerd --download` 与
-`bun scripts/prepare-caddy.ts --dest /abs/new-caddy --download`；
-它们输出构建和底层运行时测试所需的环境变量，不由 ocd 调用。
-下载和正式包装属于显式运维操作，不能用作默认本地检查。
 
 CI 的 `lfs: true` 只检出 Pyodide/OCR 等保留的固定依赖；setup action 从两个 lock 显式下载、验证并导出 host
 workerd/Caddy。缺失 asset、摘要不符或过期生成资产均失败，不退回 stock。生产启动不联网。
@@ -153,7 +151,7 @@ data-dir 与 macOS staging 所在文件系统必须允许执行，并为解压�
 当前 Linux fork 使用 Ubuntu 24.04 runner 与 Bazel `release_linux` 的 LLVM 22 toolchain 构建，二进制符号基线要求 glibc 2.38+；ocd 同时受实际编译主机的 libc 基线约束。
 容器示例与 CI 使用 Ubuntu 24.04，不使用 scratch/Alpine。macOS 与 CPU 要求继承
 [正式 pin upstream base 的要求](https://github.com/cloudflare/workerd/tree/cb26acc62e64f64487a78e3f73d0a08e9926c690#running-workerd)。
-服务配置见 examples/systemd、examples/launchd 和 examples/container。
+服务配置见 examples/systemd、examples/launchd 和 examples/container；三者保持同一 binary/config/data-dir 合同，凭据不得嵌入镜像、service unit 或发行文件。
 只替换并校验完整 ocd，不单独替换缓存中的 workerd 或 JS。
 
 ## 验收

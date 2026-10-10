@@ -38,7 +38,7 @@ tenant Worker / @cloudflare/containers
 P23 与 [P22 Browser Run](implemented/p22-browser-run.md) 共享 operator/runtime 与平台 authority 的 ownership 原则；
 P22 的浏览器由 operator 安装或通过 CDP 接入，P23 的外部 Docker／长期嵌入式 runtime 分发策略由本方案单独定义：
 
-1. `ocd` 仍是唯一公开 listener 和 account/deployment/image/capacity authority；
+1. `ocd` 仍是唯一公开产品 API 入口和 account/deployment/image/capacity authority；provider 网络的可达范围见第 12 节；
 2. 短期 Docker 与 Broker 由 operator 预先部署，open-compute 不下载、不搜索 `PATH`、不启动、不 supervise 两者；
 3. 长期 runtime 以 library/native dependency 嵌入 `ocd`，由 `ocd` ownership 管理；候选 G0 通过前不固定为 BoxLite；
 4. 正式 release 目标仍是单个 `ocd` executable 与既有单个 workerd child；嵌入式 microVM runtime 可以创建受监督的 VMM/helper
@@ -102,7 +102,9 @@ P23 把“兼容”拆成三个可验收层次：
 - 不承诺 Cloudflare image prefetch location、1–3 秒 cold-start、fleet autoscaling 或跨机迁移；
 - instance type 映射到 operator 配置的本机资源上限，不表示 Cloudflare plan entitlement；
 - rollout 保持公开状态机和可观察顺序，但只调度本机实例；
-- runtime isolation 由声明的 host Docker 或 embedded provider profile 实现，不把普通容器称为 Cloudflare per-instance VM。
+- runtime isolation 由声明的 host Docker 或 embedded provider profile 实现，不把普通容器称为 Cloudflare per-instance VM；
+- 产品面向 operator 管理的单机 SMB 部署；不承诺阻止可达宿主/provider 网络的调用方绕过 Worker 直接访问 Container，
+  不为该场景增加 sidecar/relay 实例鉴权或跨 Container 网络隔离。API/capability 授权与 engine socket 保护仍须成立。
 
 这些偏差必须进入 `references/cloudflare-compatibility.md`、capability manifest、用户文档和 differential report；不能只埋在
 P23 中。
@@ -281,7 +283,8 @@ Container namespace/image/policy；workerd 则把 Container `imageName` 配在�
 ```text
 trusted DoHost loads immutable Worker snapshot
   -> WorkerLoader receives optional validated ContainerClassPolicy
-  -> loaded DO class/facet gets a native rpc::Container capability
+  -> trusted native owner resolves the stable DO's current instance lease
+  -> loaded DO class/facet gets a revocable native rpc::Container capability
   -> ctx.container exists only for that declared class
   -> native workerd Container API talks to configured Broker
 ```
@@ -291,20 +294,21 @@ trusted DoHost loads immutable Worker snapshot
 ```text
 application_resource_id
 deployment/version/class descriptor digest
-immutable image digest/provider image reference
-normalized cpu/memory/disk/pid limits
-internet/egress policy
-instance generation and rollout target generation
+declared Container capability and supported API policy
 ```
 
 规则：
 
-- policy 只由 `ocd` 持久 authority 生成的 authenticated/immutable runtime snapshot 派生；
+- class policy 只由 `ocd` 持久 authority 生成的 authenticated/immutable runtime snapshot 派生，证明该 class 与 application 的关联；
+- 运行状态另由 authenticated authority 查询返回：DO identity、当前 route generation、有效 instance lease，以及启动时选定的
+  immutable image/provider reference、normalized resources 和 egress policy；不把可变 lease/rollout 状态固化进 Worker snapshot；
 - tenant module、env、request、DO RPC props 不能构造或覆盖 policy；
 - 未声明 Container 的 class 得到与 Cloudflare 一致的 absent/unsupported surface，不共享 `DoHost` 的 capability；
-- native `start()` 使用 policy 中的 immutable image；tenant 不能通过 experimental `image` option 绕过；
+- 接管已有实例验证其有效 lease，允许尚未被 rollout 替换的旧 effective target；新建实例由 `ocd` 按当前 application/rollout
+  规则选择已准入 target 并分配 lease，native `start()` 只能使用该 lease 的 immutable image，不能通过 experimental `image` 绕过；
 - workerd 给 Broker 的 create request 带 platform-owned opaque labels 与资源字段，不带 account name、secret 或 source path；
-- route generation、object generation、deployment rollback 和 rollout target 共同 fence 旧 capability；
+- route generation 撤销旧 Worker/facet 的调用权限，object generation 隔离删除重建的对象，lease generation 隔离每次运行；
+  application target 前进本身不撤销仍有效的旧实例 lease；
 - superseded helper、静态占位 `imageName` 和 JS membrane 在正式实现中删除。
 
 G0 可以用一个最小 JS membrane 验证 official package call graph，但不得把它作为最终 security/compatibility boundary。若 native
@@ -312,17 +316,51 @@ brand、facet context 或 lifecycle 无法保持，G0 直接转为上述 fork ex
 
 ### 7.3 Container identity
 
-一个 running Container 对应一个明确的 tenant DO object generation：
+复用已有 DO authority 和计划中的 application/lease 字段，分别表达四种身份：
+
+| 身份 | 含义 | 变化时机 |
+| ---- | ---- | -------- |
+| DO identity | instance scope、namespace resource ID、object ID、object generation | 对象删除重建等身份变化 |
+| Worker route generation | 当前获准执行该 DO 的 Worker 版本 | Worker 发布或回滚 |
+| application target generation | application 期望使用的 Container 配置 | Container 配置发布或回滚 |
+| instance lease generation | 一次具体的 Container 运行 | 每次重新启动，包括同一镜像的重新启动 |
+
+一个 running Container 对应一个明确的 DO identity 和 instance lease：
 
 ```text
-account / script / class / object-id / object-generation
-  + application-target-generation
+instance / namespace-resource-id / object-id / object-generation
+  + application-resource-id / lease-generation
   -> opaque engine instance key
 ```
 
 engine name 使用 keyed digest/opaque ID，不把 account、script、class、DO ID 或 deployment name 暴露给 Docker CLI、provider logs
-或其他 tenant。相同 DO object generation 同时最多一个 application container；旧 generation、旧 image rollout 或不匹配 start
-identity 必须拒绝，不能连接到“名字碰巧相同”的进程。
+或其他 tenant。相同 DO identity 同时最多一个 application container，包括状态尚未确认终止的 `lost` lease。lease 的 target/image
+记录本次运行的 immutable effective configuration，不要求等于 application 最新 target。过期调用权限、不匹配 DO identity、
+已终止 lease 或不匹配 start identity 必须拒绝，不能连接到“名字碰巧相同”的进程。
+
+### 7.4 Worker/facet 更新时的原生交接
+
+Container attachment 由可信 DoHost 对应的 native owner 持有，绑定稳定 DO identity；tenant facet 只持可撤销控制权限。
+复用 workerd 的 `ContainerClient` 引用计数、client 查找和 cleanup generation，不另建 JS Container 实现或第二套 process authority。
+[现有 actor lifecycle](../third_party/workerd/src/workerd/server/server.c++) 释放引用后，inactivity timer 可能继续持有 client；
+发布交接必须显式保留引用，不能依赖 timer 恰好存在。
+
+在现有 DO 串行执行边界内完成交接：
+
+1. 验证新的 route authority，并保留当前 attachment/client 引用；
+2. 撤销旧 facet 控制权限，再 abort 旧 facet、加载新 class；
+3. 验证新 class 仍声明同一 application 的 Container capability；
+4. 新 facet 通过原生 `ctx.container` 接管现有有效 lease，随后释放交接临时引用。
+
+交接不调用 Docker stop/delete/create，不改变 lease、镜像、进程或临时 filesystem。Worker code-only deploy 不重启 Container。
+删除或改绑 Container class 不走接管路径，按显式 application/object lifecycle 停止旧实例；加载失败保留现有 lease 与容量占用，
+返回稳定失败并允许后续可信重试，不把接管失败当成容器退出。owner/临时引用由恢复或明确终止路径释放，不永久保活。
+普通 DO eviction、inactivity 和平台 shutdown 的停止规则仍由固定合同决定；发布交接不改写这些规则。
+
+所有异步 engine mutation、exec、monitor、port handle 与 cleanup 都绑定具体 lease/start identity。旧 facet 不得再发起操作，
+撤销前已获准的操作仍只作用于原 lease；延迟 stop/delete 不能按 DO 名字命中新 lease。旧 Promise 不迁移到新 isolate，
+新 facet 重新观察当前 lease；outbound interception 不得继续调用已撤销的 facet，由固定合同清理或重新绑定。
+保持容器运行不等于保证旧 Worker 的 HTTP/WebSocket/exec stream 无中断；CT0 分别冻结断开、取消与重新观察的行为。
 
 ## 8. 两阶段 Container Engine provider
 
@@ -372,6 +410,9 @@ GID。workerd 只看到共享 volume 中的 Broker socket，不能看到真实 D
 当前 workerd 会读取 sidecar published `HostPort`，再硬编码访问 `127.0.0.1:<HostPort>`。普通 bridge 模式中的容器 loopback
 不是 Docker host loopback，因此仅挂载 socket 不足以工作。生产部署要求 Broker 与 `ocd`/workerd 共享 network namespace，并由
 Broker 在该 namespace 建立 loopback relay；Linux `network_mode: host` 仅作为 G0/development 简化方案，不作为默认生产合同。
+此 relay 解决连接拓扑，不作为 tenant 间的访问隔离边界。当前 workerd 使用 `PublishAllPorts`，实际发布地址由 Docker/provider
+配置决定；operator 管理其可达范围。P23 不增加防止直连 Container 的发布端口隔离、relay 实例鉴权或绕过入口攻击 Gate，
+也不据此宣称只有 DO 可以在网络层访问 Container；此范围不放宽 Broker/Docker 管理接口的授权与 socket 保护。
 
 ### 8.4 长期 embedded runtime + Docker 子集 shim
 
@@ -463,6 +504,7 @@ image invariant：
 | ----------------------------------------------------- | ------------------------------------ |
 | application/image/target/rollout/capacity authority   | `ocd` + SQLite/artifact store        |
 | Worker/DO code、native API、per-DO operation ordering | workerd                              |
+| stable DO attachment、facet 控制权限交接              | workerd trusted native owner         |
 | process/container creation与host isolation            | Broker/runtime                       |
 | application process与其临时 filesystem                | application container                |
 | outbound mediation                                    | workerd + egress interceptor sidecar |
@@ -487,6 +529,8 @@ container_rollouts
 ```text
 admitting -> starting -> running -> stopping -> stopped
 admitting/starting/running/stopping -> lost
+lost -> starting/running/stopping  # only after proving the same lease/start identity
+lost -> stopped                   # only after confirming termination and cleanup
 ```
 
 规则：
@@ -496,12 +540,20 @@ admitting/starting/running/stopping -> lost
 - workerd reconnect 时同时验证 start identity、image digest、provider contract 和 process/container状态；
 - application main process exit 驱动 `monitor()`，不能因 sidecar/daemon状态伪造正常 exit；
 - `destroy()`、重复 stop、DO eviction、client disconnect 与 `ocd` shutdown 行为逐项固定；
-- `ocd` restart 后从 SQLite target/leases 与 Broker inventory reconciliation；匹配的实例重连，不匹配的已知实例停止；
-- Broker/runtime restart 后无法证明身份或状态的实例标 `lost`，不把新进程冒充旧 Container；
+- `ocd` restart 后从 SQLite target/leases 与 Broker inventory reconciliation；匹配的实例重连，不匹配的已知实例经身份核对后停止；
+  重连到仍有效的旧 effective target 不要求其镜像等于 application 最新 target；
+- Broker/runtime restart 后无法证明身份或状态的实例标 `lost`，保留其容量和 DO identity 占用，不把新进程冒充旧 Container；
+- `lost` 表示观察不确定，不表示进程退出。证明仍是同一次运行后可恢复相应状态，但不复活旧 facet capability 或已结束的 monitor；
+  只有确认该 lease 未创建进程或进程已退出、所需 sidecar/资源清理完成且迟到 create/start 已被 fence 后，才能进入 `stopped` 并释放占用；
+- 单次超时、失联或暂时查不到实例不构成终止证据；create 结果未知时先按同一 lease 幂等核对，不能释放后再创建替代实例；
 - provider orphan 由 keyed label + authority record识别并 bounded reap；未知 operator container 不触碰；
 - recovery 失败不删除 retained failure evidence，不自修复数据库或 image authority。
 
 ## 11. Rollout 与 rollback
+
+本节实现 application-wide rollout，Day 1 限定为 `default` scheduling policy；`durable_object` policy 的按实例选镜像合同不在本节范围。
+依据 [官方 rollout 合同](https://developers.cloudflare.com/containers/configuration/rollouts/)（CT0 待固定证据），Worker 更新和 Container replacement
+是独立生命周期，新 Worker 可访问仍有效的旧镜像实例，rollout 不修改 DO storage。
 
 目标 rollout sequence 如下；CT0 必须对照当前 cf/Cloudflare 的可观察顺序确认或修订，不能把旧 producer 顺序当作已资格合同：
 
@@ -518,24 +570,32 @@ Worker code可能在 rollout 完成前访问旧 image instance。P23 因此必�
 - 每个 running instance 的 effective generation/image；
 - rollout step 与 terminal state。
 
+例如 `route=10 / lease=7 / image=A` 发布新 Worker 与目标 B 后，可变为 `route=11 / lease=7 / image=A / target=B`。
+route 更新按第 7.4 节交接控制权限，lease 7 保持有效；只有 rollout 选中该实例并确认 lease 7 终止后，才能分配新 lease 启动 B。
+target 更新、Worker 回滚或 facet reload 均不隐式销毁未被选中的实例；new start 的 target 选择只由 `ocd` authority 决定，
+不能从当前 Worker snapshot 猜测，也不能在不可用时回退旧镜像。
+
 单机 rollout：
 
 - `max_instances < 2` 时一个 100% step；其他默认/自定义 steps 由当前 cf producer 与官方 rollout API fixture 固定；
 - 每一步只选择本机 eligible instances，不能为了“达到百分比”超过 `max_instances`；
-- selected instance 先等待 active grace，再向 main process发送 `SIGTERM`；
+- selected instance 按固定合同核对 DO connection age 与 active grace，再向该 lease 的 main process 发送 `SIGTERM`；
 - 按官方固定合同最多等待 15 分钟，之后 `SIGKILL`；
-- process exit、`onStop` 可观察后再启动 target image；
+- 确认旧 lease process exit、完成必要 cleanup 后再启动 target image；向对应 lease 的 monitor/package 提供 exit outcome，
+  `onStop` 的执行遵循固定 package 合同，不以 tenant callback 必须成功完成作为容量释放或 rollout 前进条件；
 - image/app code mixed window 是正式语义，不通过全局 stop-the-world 隐藏；
 - rollback 创建指向旧 immutable target 的新 target generation，不复活旧 lease/capability；
 - rollout失败保留 Worker已激活这一事实，返回固定 CLI/API 状态，不伪造事务回滚。
 
-`scheduling_policy`、affinity、regional placement 等无法在单机产生对应效果的配置默认拒绝。若固定 cf/官方 API 要求 round-trip，
+未支持的 scheduling policy、affinity、regional placement 等配置默认拒绝；`default` policy 按本节实现。若固定 cf/官方 API 要求 round-trip，
 可以保存并返回 `unsupported` 状态，但不能接受后忽略并宣称生效。
 
 ## 12. Networking 与 egress
 
-Container 没有 public listener；外部请求仍先到 `ocd`/Worker/DO，再通过 `getTcpPort()` 访问 Container。不得把 engine published
-port、bridge IP 或 localhost port 返回给 tenant/client。
+产品支持的访问路径是 `ocd`/Worker/DO，再通过 `getTcpPort()` 访问 Container；产品 API 不提供 Container public endpoint，
+也不返回 engine published port、bridge IP 或 localhost port。宿主/provider 网络上直接访问 Container 的场景不纳入隔离保证，
+不增加 sidecar/relay 实例鉴权或专用网络隔离；operator 管理发布端口和宿主网络可达范围。此限制须进入 capability/deviation 与 runbook。
+通过平台 API/native capability 的跨 account/script/object 授权仍必须验证，不因省略网络直连隔离而放宽。
 
 workerd local implementation 为每个 application container 配一个 `proxy-everything` egress interceptor sidecar，并让应用容器
 共享其 network namespace。P23 保留一个 authoritative egress path：
@@ -544,16 +604,22 @@ workerd local implementation 为每个 application container 配一个 `proxy-ev
 container connect/fetch
   -> egress interceptor sidecar
   -> workerd container egress handling
-  -> platform-owned Network(allow = ["public"])
+  -> platform-owned IP capability
+     Network(allow = ["network", "local"], deny = ["unix", "unix-abstract"])
 ```
 
 约束：
 
 - `enableInternet=false` 默认无 general outbound；显式 interception binding 仍按固定 API合同处理；
-- `enableInternet=true` 也只能使用 open-compute 已有 public-address-only 网络能力；
-- private、loopback、link-local、metadata、Unix、IPv4-mapped private IPv6、DNS-to-private、redirect-to-private 和所有平台 listener
-  在 address layer 拒绝；
-- 不新增 hostname pre-resolution gateway 或第二条 container NAT fallback；
+- `enableInternet=true` 沿用 [当前 outbound 配置](../packages/runtime/config.capnp)：允许公网、私网、loopback、link-local、metadata
+  及宿主允许的其他 IP 目的地。地址过滤由 operator 的防火墙、network namespace、容器或 VM 承担，不宣称逐 Container IP 隔离；
+- native [`ContainerClient`](../third_party/workerd/src/workerd/server/container-client.c++) 当前直接使用 native network 建立 passthrough
+  连接，不能假设 Worker `globalOutbound` 自动约束它。
+  实施时将 tenant 出站连接接入上述平台 IP capability；Broker Unix socket 与内部 relay 连接继续使用独立的受信任内部能力；
+- `unix`/`unix-abstract` 拒绝只针对 tenant 出站借宿主网络能力访问宿主 Unix endpoint，不禁止 Container 内部自己的 Unix socket IPC。
+  不向 application 挂载宿主 Docker/Broker/control socket；workerd 私有连接 Broker 不属于 tenant outbound；
+- 不增加 hostname pre-resolution、port ACL、自动防火墙管理、JavaScript 出站代理或第二条 container NAT fallback；
+- 平台 control API 和 Broker 仍独立鉴权，不把来源为 loopback 当成授权；Container 数据路径的直连范围按本节产品定位处理；
 - outbound HTTP/HTTPS/TCP interception 的 hostname/glob/IP/CIDR匹配、replacement 和 open-connection update 按固定 workerd
   behavior；
 - CA injection、HTTPS interception、credential/material 不能写进 application image layer、env、logs 或 exec output；
@@ -573,9 +639,13 @@ container connect/fetch
 - ports、connections、HTTP body、WebSocket frame/message/queue；
 - logs/metrics retention 与 Broker inventory bounds。
 
-admission permit 从 `admitting` 持有到 `stopped/lost`，不是 Worker request 生命周期内的短 semaphore。`max_instances` 在生产
-必须由 SQLite/`ocd` admission 与 Broker effective count 双层执行；不能复制 Miniflare 本地开发中“不应用
-`max_instances`”的行为。
+admission permit 从 `admitting` 持有到确认终止并完成清理的 `stopped`，不是 Worker request 生命周期内的短 semaphore。
+`lost` 保留 permit 和 DO identity 占用，禁止同一对象的替代启动；恢复同一 lease 不重复计数。`max_instances` 在生产必须由
+SQLite/`ocd` admission 与 Broker effective count 双层执行；不能复制 Miniflare 本地开发中“不应用 `max_instances`”的行为。
+Broker 计数包括属于本平台但尚未恢复关联的实例及结果未知的 create/start reservation；无法核实归属或完整计数时，受影响的
+application/account/provider 配额范围暂停新 admission，不能把未知项按零处理。operator 的无关 workload 不认领、不删除。
+资源终止与清理的 provider I/O 在 transaction 外完成；记录释放确认与解除 DO identity 占用在同一 authority transaction 完成，
+迟到旧 lease 的请求不得重新创建进程。
 
 instance type 映射表是 operator deployment capability：
 
@@ -678,7 +748,8 @@ Miniflare 只提供开发/runtime 行为参考；配置、Build Output、upload 
 复用 current fork 的 native Container API、RPC、Docker client、exec streams、port tunnel、monitor、egress interception 与 reconnect
 代码。新增内容限于：
 
-- dynamic loaded DO class的 Container attachment/policy；
+- dynamic loaded DO class 的 Container attachment/policy、稳定 owner 与 facet 控制权限交接；
+- 将 native tenant passthrough 接入既有平台 IP capability，保留受信任内部 Unix/relay 连接；
 - platform-owned identity/resource labels；
 - Broker所需的严格 provider metadata；
 - compatibility/security bug fix及其 upstream-style tests。
@@ -712,15 +783,17 @@ fork变更在 `third_party/workerd/` 独立提交，再由协调 pin、archive/d
 - low-level start/exec streams/monitor/getTcpPort/outbound intercept通过；
 - 两个 tenant classes使用不同 immutable image，non-Container class看不到 capability；
 - DO eviction、tenant version change、workerd restart与engine process restart不串 identity；
+- code-only deploy 保持同一 Container lease/process/filesystem，旧 facet 操作拒绝，新 facet 可接管旧 effective target；
+- 两实例分批 rollout 只替换被选中的实例，延迟 cleanup 不命中新 lease，接管失败不释放旧实例容量；
 - 记录需要的最小 workerd extension与Docker API trace；probe代码完成后删除，保留结果证据。
 
-Exit：若 native capability不能安全挂到 dynamic loaded DO/facet，P22保持 unsupported；不能退回JS模拟或把所有tenant共用一个
-静态 image/container capability。
+Exit：若 native capability 不能安全挂到 dynamic loaded DO/facet，或不能完成上述交接与 lease fencing，P23 保持 unsupported；
+不能退回 JS 模拟或把所有 tenant 共用一个静态 image/container capability。
 
 ### CT1：workerd dynamic attachment
 
 - 实现 `ContainerClassPolicy` 与dynamic loaded DO attachment；
-- per-class/per-object/per-generation identity和capability fencing；
+- stable DO identity、route authority 与 instance lease 分离，facet handover、monitor/stream/interception lifetime 和 cleanup fencing；
 - platform image/resource/egress policy注入；
 - tenant experimental override拒绝；
 - native workerd unit/integration tests与formal fork commit。
@@ -729,7 +802,8 @@ Exit：若 native capability不能安全挂到 dynamic loaded DO/facet，P22保�
 
 - P6 metadata decode、current Day 1 SQL/schema/checksum；
 - OCI manifest/config/layer validation与artifact authority；
-- application/target/rollout/lease repositories；
+- application/target/rollout/lease repositories，已有 lease 接管与新 start admission 分开；
+- `lost` 容量/identity 占用、未知 create/start reservation 和确认终止后的原子释放；
 - immutable image digest、rollback pointer与API wire models；
 - provider image materialization contract。
 
@@ -739,9 +813,10 @@ Exit：若 native capability不能安全挂到 dynamic loaded DO/facet，P22保�
 - minimal Docker Engine subset validation/proxy，不提供通用 Docker remote API；
 - host Docker socket、rootless/rootful profile、预物化 image 与版本资格验证；
 - `ocd` 容器化部署中的 sibling container、共享 network namespace 与 loopback relay；
+- provider 发布端口和直连 Container 的范围进入部署说明，不增加数据路径防绕过鉴权或隔离；
 - image/resource/privilege/network/mount enforcement；
 - application + egress sidecar lifecycle、status/reconnect/cleanup；
-- provider crash/restart、orphan与corrupt cache recovery。
+- provider crash/restart、orphan与corrupt cache recovery；未恢复关联实例保守计数，计数不确定时拒绝新 admission。
 
 ### CT3B：长期 embedded runtime + Docker 子集 shim
 
@@ -770,8 +845,9 @@ Exit：若 native capability不能安全挂到 dynamic loaded DO/facet，P22保�
 
 ### CT6：security、operations 与 qualification
 
-- cgroup/runtime effective resource checks、egress/private-network regression；
-- identity/cross-account/cross-script/cross-version differentials；
+- cgroup/runtime effective resource checks、现有 IP outbound/宿主 Unix 拒绝与 Container 内部 IPC regression；
+- 平台 API/native capability 的 identity/cross-account/cross-script/cross-version differentials，不包含直接访问 Container 的网络隔离 Gate；
+- `lost` 期间禁止替代启动、未知 create 结果恢复、同一 lease 重连与确认终止后释放容量；
 - Broker/workerd/`ocd` crash、restart、upgrade、orphan cleanup与soak；
 - P7/P9、readiness、metrics、backup（authority metadata only）与runbook；
 - fixed cf/package/remote differential；
@@ -796,21 +872,32 @@ Exit：若 native capability不能安全挂到 dynamic loaded DO/facet，P22保�
 | `monitor/destroy/signal`                      | resolve/reject/reason/exit/restart generation一致              |
 | official package readiness/sleep/alarm        | restart/eviction后无重复或lost timer                           |
 | outbound disabled                             | Container无general Internet                                    |
-| outbound enabled                              | 只走public Network；private/metadata/platform listener拒绝     |
+| outbound enabled                              | 使用现有 IP capability；公网/私网/loopback/link-local/metadata 按宿主策略可达 |
+| tenant outbound 到宿主 Unix endpoint          | unix/unix-abstract 拒绝；Docker/Broker/control socket 不挂载给 application |
+| Container 内部 Unix socket IPC                | 应用内部 IPC 正常，不受宿主 outbound Unix deny 影响           |
 | HTTP/HTTPS/TCP interception                   | matching、replacement、open connection behavior一致            |
-| cross-account/script/object ID                | 不能连接、控制或观察其他instance                               |
+| cross-account/script/object ID                | 平台 API/native capability 拒绝越权连接、控制或观察；不声称网络直连隔离 |
 | tenant尝试image/privilege/socket override     | native boundary拒绝；Broker无危险request                       |
 | max instances/pending starts                  | stable capacity error/Retry-After，无无限队列                  |
 | effective CPU/memory/disk/PID                 | provider实际限制与reported profile一致                         |
 | app crash/sidecar crash                       | monitor/egress/recovery分别正确收敛                            |
 | Broker unavailable/restart                    | readiness degraded；匹配实例reconcile，否则lost                |
+| lost 但旧容器仍运行                           | 保留容量和 DO identity 占用，不创建替代实例                    |
+| create/start 结果未知或实例尚未恢复关联        | 保留 reservation；计数无法核实时暂停受影响配额范围的新 admission |
+| lost 恢复同一 lease                           | 验证 start identity 后恢复，不重复计数、不复活旧 capability/monitor |
+| lost 确认终止                                 | 完成 cleanup、fence 迟到 create/start 后原子释放容量和 identity 占用 |
 | workerd/`ocd` restart                         | identity、image、lease、monitor不串代                          |
 | unknown provider container                    | 不认领、不删除operator其他workload                             |
 | `ocd` container + host Docker                 | 只有Broker挂host socket；sibling container与loopback relay通过 |
 | Docker socket `:ro`或GID不匹配                | 不误判为安全/可用；preflight明确失败                           |
 | embedded provider基础13 family                | lifecycle/exec/archive PUT逐字段、状态码和stream通过           |
 | embedded provider缺少snapshot 8 family        | capability明确unsupported，不宣称完整兼容                      |
+| Worker code-only deploy / facet handover      | 同一 lease/process/image/filesystem；新 facet 接管，旧 capability 拒绝 |
+| handover 加载失败或与 rollout/restart 交错     | 保留有效 lease 与容量，可信重试/reconcile，无重复创建           |
+| 旧 lease 的延迟 exec/stop/delete/cleanup      | 只针对原 lease/start identity，不能命中新 lease                |
+| facet handover 的 monitor/stream/interception | 新 facet 重新观察；旧 Promise 不迁移、旧 callback 不再被调用；断开按 fixture |
 | rollout mixed generations                     | old/new按target/lease可解释，DO storage不变                    |
+| rollout 第一批只选择部分实例                  | 未选中实例保持旧 image/lease，新 Worker 仍可访问               |
 | rollout SIGTERM/drain/SIGKILL                 | fixed grace/15-minute stop contract通过                        |
 | rollout later step fails                      | Worker active事实与rollout失败状态保留                         |
 | rollback                                      | 新target generation指向旧digest，不复活旧capability            |
@@ -826,14 +913,18 @@ P23 只有同时满足以下条件才可归档：
 - 固定 Workers types和`@cloudflare/containers`在正式 pinned workerd中直接运行，无custom package/import rewrite；
 - supported `ctx.container` API的descriptor、exception、stream、Fetcher/Socket、monitor与compatibility flags逐项通过；
 - dynamic `DoHost` 只为声明class附加native capability，不共享静态image或泄露给non-Container class；
+- stable attachment 与 facet 控制权限分离，code-only deploy 不重启 Container；旧 effective target 可接管，旧调用/cleanup 不串 lease；
 - immutable image digest、application target、instance lease、capacity与rollout由`ocd`/SQLite authority持有；
+- `lost` 和未知 create/start 保留容量/identity 占用，Broker 保守计数；仅确认终止、cleanup 和迟到操作 fencing 后释放；
 - 短期 Broker/Docker是operator prerequisite，不被open-compute下载、打包、启动、supervise或公开；
 - 长期 embedded runtime通过候选G0、同一Docker子集合同、离线打包和`ocd` lifecycle/recovery Gate后，才可替代短期依赖；
 - workerd不持有raw Docker socket；短期只有Broker持有且不向上暴露通用权限，dangerous HostConfig/mount/device/capability全部fail closed；
 - CPU/memory/disk/PID/instance/network limits经过provider effective-state测试，不只验证配置；
+- Container native 出站沿用平台 IP capability，宿主 Unix endpoint 不可经 tenant outbound 访问，Container 内部 Unix IPC 可用；
 - image chain/digest/materialization/cache corruption与offline runtime startup通过；
 - app/sidecar/Broker/workerd/`ocd` crash、restart、eviction、rollout、rollback、orphan cleanup和soak通过；
 - single-machine placement/isolation/rollout deviations进入compatibility matrix、capability manifest和用户文档；
+- 明确不保证阻止宿主/provider 网络直连 Container，不加入该场景的额外鉴权/隔离 Gate；管理 API/native capability 授权与 engine socket 保护照常验收；
 - WDL/Miniflare只作为固定source evidence，不成为production authority或fallback；
 - Cloudflare remote differential完成，或credential/availability限制拆成独立active acceptance；
 - P6/P7/P9/P20、references、examples、runbook和Dashboard同步；
