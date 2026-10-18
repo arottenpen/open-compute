@@ -48,8 +48,9 @@ P22 的 CDP 和 managed fixture 都使用显式准备的完整 `chrome-headless-
 macOS coverage 和最终 workspace CI 显式启用 setup action 的 `browser-fixture` 输入，
 从 `test/browser-fixture.lock.json` 固定的官方 Chrome for Testing URL 下载 headless-shell，
 先校验 archive SHA-256，再调用同一 preparation 工具。此步骤不调用 Playwright install。
-同一 setup action 也支持已固定的 Linux x64 archive；ARM64 宿主 Docker 若缺少 x64 execution support，
-会在 native shell 阶段失败，不能以解压或摘要校验代替 Linux x64 runtime 验收。
+同一 setup action 按宿主架构选择固定的 Linux x64 或 Linux ARM64 archive。
+Linux ARM64 使用同版本的原生浏览器，不依赖 x64 解释器。
+ARM64 宿主上的翻译执行不构成 Linux x64 宿主资格。
 
 ```sh
 bun scripts/prepare-browser.ts --source /abs/installed/chrome-headless-shell --dest /abs/new/browser-fixture
@@ -80,6 +81,39 @@ token 仅从 `OPEN_COMPUTE_BROWSER_SOAK_TOKEN` 读取；默认 10 分钟，允�
 W3 Provider fixture 不属于发行物；它是本仓库 `test-support` feature 下的 Cargo 测试二进制
 `crates/service/src/bin/host_extension_test_provider/`（schema 拷贝、Cap'n Proto 绑定与 `OCP2` attach 循环），
 随测试目标一起由 cargo 构建，`p3-services-product` 通过 `CARGO_BIN_EXE` 直接定位，无需外部 fixture、环境变量或 Bazel。
+
+P23 的 `p23-containers` 使用正式 workerd、原版 `@cloudflare/containers`、真实 SQLite、SigV4 fixture 和
+已通过资格检查的独立 Docker Broker。Linux 本地验收使用同一宿主的约定网络。
+release 工作流为 macOS coverage 和最终 workspace Gate 配置 `macos-15-intel` 与独立 Colima Engine。
+Colima 的 SSH port forwarder 将 published loopback port 转发到 macOS；其他远程 Engine 不继承此资格。
+OrbStack 接受磁盘配置但未执行上限，不能替代配额资格。
+`OPEN_COMPUTE_TEST_CONTAINERS_INPUT` 指向显式准备的绝对 JSON 路径，包含 `containers` 实例配置与两个
+不可变 OCI 镜像输入；每个镜像列出 `manifest` 路径及 `blobs` 的 `path`、`sha256`。配置、镜像、正式
+原生协议或资源证明缺失时直接失败，不下载、不跳过，也不使用协议 mock 作为产品资格。
+CI 先核对当前 run 的原生架构镜像 artifact，再构建普通 Broker。
+`test/containers-fixture/with-ci-macos-engine.py` 拥有本轮 Colima profile，并调用 `with-ci-broker.py`。
+Engine 使用 XFS project quota、`overlay2`、cgroup v2 和 `cgroupfs`。
+profile 使用 2 CPU、4 GiB 内存、8 GiB 系统盘和 16 GiB 数据盘；XFS backing file 上限为 12 GiB。
+入口要求宿主至少有 44 GiB 空闲空间，不挂载宿主 HOME，不转发 SSH agent，不切换默认 Docker context。
+Broker 入口载入两个已验证的 bootstrap archive，安装 helper，再核对真实 Broker 的输入握手。
+命令结束后，入口回收本轮 helper、Broker 和 Colima profile；失败仍保留宿主报告。
+准备入口的成功只证明准备链，不替代命令自身的 coverage 或最终 Gate 结果。
+当前 P23 验收范围包含完整 stable Container API 与 snapshot capture/restore。
+固定 types 的清单包含 65 个成员；成员资格仍为 `blocked`，见 [Containers 运维](containers.md)。
+P23 产品场景包含跨对象快照恢复、重启后恢复，以及 exec PID、晚输出、helper 意外退出和无 shell 回归。
+PTY 场景用 stdin 与 `SIGWINCH` 握手，核对 resize 前后的尺寸、合并后的 stderr 和真实退出码。
+命名镜像场景核对两个镜像、独立 getter 副本、省略规格时的 Lite，以及自定义 CPU 限额。
+信号场景核对主进程退出、monitor 拒绝和 exec kill；exec 场景核对 stdin EOF、输出忽略和合并。
+HTTP 拦截场景使用两个回调，分别返回不同标记。
+场景先登记指定主机，再登记兜底规则。
+场景核对指定主机仍进入原规则，未匹配主机进入兜底回调。
+HTTPS 场景验证注入 CA、主机名、请求和响应；WebSocket 场景验证升级、正文和关闭握手。
+原生 DO 场景不调用 SDK monitor，静默 90 秒后比较 1 秒和 120 秒 timeout。
+快照场景读取持久化 artifact，核对实际字节数和 SHA-256，并在 daemon 重启后再次核对。
+对象存储 fixture 的正常 GET 与 range 共享不可变正文，避免读取大快照时复制完整对象。
+损坏注入使用独立正文，保留已打开 reader 的原始字节。
+这些场景已写入测试；正式 runtime、真实 Provider 和最终 Gate 的成功结果才证明验收通过。
+主进程日志采集仍为后续范围。
 
 ## 一个调度入口
 
@@ -258,9 +292,9 @@ single-binary 与 `workflow-product` 使用独占屏障。该目标同时覆盖 
 串行冷编译与并行热缓存混算提速。基准对比是明确的测量活动，不冒充最终验收。
 并发结果仍受 CPU/内存、磁盘和系统负载影响，不承诺固定提速比例。
 
-开发/test profile 仅对 `sha2` 和 `miniz_oxide` 依赖使用 `opt-level=3`，降低每个独立数据目录
-首次物化时的完整解压/摘要校验成本。workspace 源码仍未优化，debug 断言、溢出检查和 release
-配置不变；不缓存或绕过完整性检查。实测及其测量口径见 [Runtime 与测试布局](../implemented/p2-7-runtime-and-test-layout.md)。
+开发/test profile 对 `sha2`、`miniz_oxide` 和 `zlib-rs` 依赖使用 `opt-level=3`，降低摘要校验和压缩成本。
+workspace 源码、debug 断言、溢出检查和 release 配置不变；不缓存或绕过完整性检查。
+早期 runtime archive 验证的测量口径见 [Runtime 与测试布局](../implemented/p2-7-runtime-and-test-layout.md)。
 
 `--workspace` 通过 Cargo metadata 枚举全部启用的 test harness，使用
 `mbx test --workspace --all-targets --all-features --no-run` 一次构建，再逐一执行；
