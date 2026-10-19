@@ -45,7 +45,7 @@ func TestExecSupervisorPayload(t *testing.T) {
 		fmt.Fprint(os.Stdout, "shellless-readonly")
 		os.Exit(0)
 	case "descendant":
-		command := exec.Command(execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$")
+		command := exec.Command(os.Args[0], "-test.run=^TestExecSupervisorPayload$")
 		command.Env = append(os.Environ(), "OC_EXEC_TEST_PAYLOAD=grandchild")
 		command.Stdout, command.Stderr = os.Stdout, os.Stderr
 		if command.Start() != nil {
@@ -96,19 +96,6 @@ func TestExecSupervisorPayload(t *testing.T) {
 	}
 }
 
-func execSupervisorTestBinary() string {
-	if path, err := os.Executable(); err == nil {
-		if abs, err := filepath.Abs(path); err == nil {
-			return abs
-		}
-		return path
-	}
-	if abs, err := filepath.Abs(os.Args[0]); err == nil {
-		return abs
-	}
-	return os.Args[0]
-}
-
 type execSupervisorTestProcess struct {
 	command    *exec.Cmd
 	stdin      io.WriteCloser
@@ -133,7 +120,7 @@ func execSupervisorTestStart(t *testing.T, start execSupervisorStart, extraEnvir
 	if _, err := rand.Read(process.key[:]); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(execSupervisorTestBinary(), "-test.run=^TestExecSupervisorHarness$")
+	command := exec.Command(os.Args[0], "-test.run=^TestExecSupervisorHarness$")
 	command.Env = append(os.Environ(), append(extraEnvironment, "OC_EXEC_TEST_SUPERVISOR="+process.identity)...)
 	command.SysProcAttr = &syscall.SysProcAttr{PidFD: &process.pidfd}
 	input, err := command.StdinPipe()
@@ -320,7 +307,7 @@ func TestExecSupervisorRawSignalsAndLateSignal(t *testing.T) {
 }
 
 func TestExecSupervisorExitDoesNotWaitForDescendantOutput(t *testing.T) {
-	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=descendant")
+	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{os.Args[0], "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=descendant")
 	info := process.receipt(t)
 	start := time.Now()
 	wait := process.terminal(t)
@@ -346,7 +333,7 @@ func TestExecSupervisorExitDoesNotWaitForDescendantOutput(t *testing.T) {
 }
 
 func TestExecSupervisorPTYResizeAndPartialLineEOF(t *testing.T) {
-	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$"}, Pty: true, Rows: 24, Cols: 80}, "OC_EXEC_TEST_PAYLOAD=pty")
+	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{os.Args[0], "-test.run=^TestExecSupervisorPayload$"}, Pty: true, Rows: 24, Cols: 80}, "OC_EXEC_TEST_PAYLOAD=pty")
 	process.receipt(t)
 	line, err := process.stdout.ReadString('\n')
 	if err != nil || strings.TrimSpace(line) != "PTY_READY" {
@@ -591,7 +578,7 @@ func TestExecSupervisorBootstrapEOFNeverStartsChild(t *testing.T) {
 	if _, err := rand.Read(identity[:]); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(execSupervisorTestBinary(), "-test.run=^TestExecSupervisorHarness$")
+	command := exec.Command(os.Args[0], "-test.run=^TestExecSupervisorHarness$")
 	command.Env = append(os.Environ(), "OC_EXEC_TEST_SUPERVISOR="+hex.EncodeToString(identity[:]))
 	command.Stdin = strings.NewReader("short-bootstrap")
 	var stdout, stderr bytes.Buffer
@@ -706,7 +693,7 @@ func TestExecSupervisorPreRunCrashAndPayloadNeverSpawn(t *testing.T) {
 }
 
 func TestExecSupervisorRawPTYInputEOFDoesNotCloseOutput(t *testing.T) {
-	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$"}, Pty: true, Rows: 24, Cols: 80}, "OC_EXEC_TEST_PAYLOAD=raw-pty")
+	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{os.Args[0], "-test.run=^TestExecSupervisorPayload$"}, Pty: true, Rows: 24, Cols: 80}, "OC_EXEC_TEST_PAYLOAD=raw-pty")
 	process.receipt(t)
 	line, err := process.stdout.ReadString('\n')
 	if err != nil || strings.TrimSpace(line) != "RAW_PTY_READY" {
@@ -777,7 +764,7 @@ func TestExecSupervisorReadOnlyDirectoryNeedsNoShellOrStateFile(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(directory, 0700) })
 	t.Chdir(directory)
-	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=shellless")
+	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{os.Args[0], "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=shellless")
 	process.receipt(t)
 	process.stdin.Close()
 	terminal := process.terminal(t)
@@ -906,7 +893,7 @@ func TestExecSupervisorClientDisconnectDuringAuthNeverClaimsRun(t *testing.T) {
 
 func TestExecSupervisorClosedAttachAndEndpointCollisionFailWithoutChild(t *testing.T) {
 	for _, closed := range []string{"stdout", "stderr"} {
-		command := exec.Command(execSupervisorTestBinary(), "-test.run=^TestExecSupervisorHarness$")
+		command := exec.Command(os.Args[0], "-test.run=^TestExecSupervisorHarness$")
 		command.Env = append(os.Environ(), "OC_EXEC_TEST_SUPERVISOR="+strings.Repeat("c", 64), "OC_EXEC_TEST_CLOSE="+closed)
 		command.Stdout = io.Discard
 		command.Stderr = io.Discard
@@ -917,7 +904,7 @@ func TestExecSupervisorClosedAttachAndEndpointCollisionFailWithoutChild(t *testi
 		}
 	}
 	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{"/bin/true"}})
-	command := exec.Command(execSupervisorTestBinary(), "-test.run=^TestExecSupervisorHarness$")
+	command := exec.Command(os.Args[0], "-test.run=^TestExecSupervisorHarness$")
 	command.Env = append(os.Environ(), "OC_EXEC_TEST_SUPERVISOR="+process.identity)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
@@ -1015,7 +1002,7 @@ func TestExecSupervisorLiveOwnerClosedOutputGetsFailureProofAndRealExit(t *testi
 }
 
 func TestExecSupervisorWrapperCrashAfterTerminalHasNoDrainProof(t *testing.T) {
-	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{execSupervisorTestBinary(), "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=descendant")
+	process := execSupervisorTestStart(t, execSupervisorStart{Argv: []string{os.Args[0], "-test.run=^TestExecSupervisorPayload$"}}, "OC_EXEC_TEST_PAYLOAD=descendant")
 	process.receipt(t)
 	terminal := process.terminal(t)
 	if terminal.ExitCode == nil || *terminal.ExitCode != 7 {
