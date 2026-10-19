@@ -1,5 +1,6 @@
 import { Container } from "@cloudflare/containers";
 import { execLifecycle } from "./exec-lifecycle";
+import { execUsersLifecycle } from "./exec-users-lifecycle";
 import { RawIdleContainer } from "./inactivity-lifecycle";
 import { NamedImageContainer } from "./named-images";
 import { networkLifecycle } from "./network-lifecycle";
@@ -177,6 +178,7 @@ export class FixtureContainer extends Container<Env> {
       cancellationOptions: { portReadyTimeoutMS: 20000, waitInterval: 50 },
     });
     if (path === "/exec-lifecycle") return execLifecycle(native);
+    if (path === "/exec-users") return execUsersLifecycle(native, false);
     if (path === "/network-lifecycle")
       return networkLifecycle(
         native,

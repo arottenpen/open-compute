@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { execOptionsLifecycle } from "./exec-options-lifecycle";
+import { execUsersLifecycle } from "./exec-users-lifecycle";
 import { signalsLifecycle } from "./signals-lifecycle";
 
 type NativeContainer = NonNullable<DurableObjectState["container"]>;
@@ -155,6 +156,7 @@ export class NamedImageContainer extends DurableObject {
       ![
         "/named/start",
         "/named/exec-options",
+        "/named/exec-users",
         "/named/snapshot-write",
         "/named/snapshot",
         "/named/snapshot-state",
@@ -208,6 +210,7 @@ export class NamedImageContainer extends DurableObject {
       });
     diagnostic.phase = "named-ready-body-cancel";
     await response.body?.cancel();
+    if (path === "/named/exec-users") return execUsersLifecycle(native, true);
     if (path === "/named/exec-options") {
       try {
         return await execOptionsLifecycle(native);

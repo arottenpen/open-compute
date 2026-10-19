@@ -13,6 +13,8 @@ for (const [name, replacement] of Object.entries({
     "export class DurableObject { constructor(ctx) { this.ctx = ctx; } }",
   "./exec-options-lifecycle":
     "export const execOptionsLifecycle = () => { throw new Error('unexpected exec'); };",
+  "./exec-users-lifecycle":
+    "export const execUsersLifecycle = () => { throw new Error('unexpected exec user probe'); };",
   "./signals-lifecycle":
     "export const signalsLifecycle = () => { throw new Error('unexpected signals'); };",
 })) {

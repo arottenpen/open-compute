@@ -5,6 +5,7 @@
 mod cf;
 mod cleanup;
 mod exec_options;
+mod exec_users;
 mod http;
 mod images;
 mod inactivity;
@@ -421,6 +422,7 @@ async fn ordinary_sdk_native_execution_code_deploy_rollout_and_restart_use_real_
             "http":{"matched":"http-specific","unmatched":"http-fallback","closed":true}
         })
     );
+    exec_users::lifecycle(&client, &public, &host, false).await;
     assert_eq!(
         tenant(
             &client,
@@ -637,6 +639,7 @@ async fn ordinary_sdk_native_execution_code_deploy_rollout_and_restart_use_real_
     )
     .await;
     signals::lifecycle(&client, &public, &host).await;
+    exec_users::lifecycle(&client, &public, &host, true).await;
     exec_options::lifecycle(&client, &public, &host).await;
     named_images::assert_stopped(&data, instance, named_application, &provider).await;
     let saved = snapshots::capture_and_cross_restore(

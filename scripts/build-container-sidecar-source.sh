@@ -53,7 +53,8 @@ if [[ "$(uname -s)" == Linux ]]; then
   exec_coverage_dir="$(mktemp -d "$sidecar_source_dir/exec-profiles.XXXXXX")"
   go test -c -cover -covermode=atomic -o exec-tests exec_supervisor*.go exec_http*.go
   GOCOVERDIR="$exec_coverage_dir" "$sidecar_source_dir/exec-tests" -test.count=1 -test.gocoverdir="$exec_coverage_dir"
-  go tool covdata textfmt -i="$exec_coverage_dir" -o=exec-coverage.out
+  root_exec_coverage_dir="$(python3 "$repository_root/test/containers-fixture/exec-helper-capabilities.py" "$sidecar_source_dir/exec-tests" "$exec_coverage_dir")"
+  go tool covdata textfmt -i="$exec_coverage_dir,$root_exec_coverage_dir" -o=exec-coverage.out
   go tool cover -func=exec-coverage.out > exec-coverage.txt
   python3 - <<'PY_EXEC_COVERAGE'
 import pathlib

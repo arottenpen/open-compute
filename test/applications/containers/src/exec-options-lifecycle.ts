@@ -4,7 +4,7 @@ function check(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-async function collect(
+export async function collect(
   native: NativeContainer,
   script: string,
   options: ContainerExecOptions,

@@ -20,10 +20,62 @@ snapshot、原生 inactivity timeout、主进程日志采集与其他后续能�
 本页下列基础验收记录不证明后续源码已通过验收。
 第 4.1 节的表格保留 R9 历史范围，不代表当前 65 个成员的逐项结果。
 
-**后续扩展状态（2026-10-18）：R21 当前源码已通过 Linux ARM64 最终 Gate；发行资格仍待完成。**
+**后续扩展状态（2026-10-19 UTC）：exec 用户策略修复已通过当前 coverage 和 Linux ARM64 最终 Gate；发行资格仍待完成。**
 正式 pin 为 R21，revision 为 `204a75bcfcc35fdf15756bef03eea867711847a6`。
 [R21 四平台 CI](https://github.com/elliothux/workerd/actions/runs/39042535973) 的五个 job 均成功。
 十个 immutable Release asset 已校验；正式 lock 已更新。
+
+2026-10-19（UTC），exec 用户策略的集成修复完成 Linux ARM64 全轮验证。
+被测源码摘要为 `639499080ce14ed7a2a67a18fbcebf1941e788735229d3ea2061db329c9a6076`。
+原版 coverage 通过 63 个目标、2,053 项用例，环境为 4 GiB、2 CPU。
+行覆盖率为 90.761046%（168,202／185,324），使用 68 个 object 和 138 个新 profile。
+随后，原版未插桩最终 Gate 通过相同的 63 个目标和 2,053 项用例。
+最终 Gate 耗时 5,605.09 秒；P23 两项真实产品用例通过，耗时 426.21 秒。
+
+额外文件守卫错误地要求可重建的测试程序保持文件身份不变；原失败报告保留。
+Gate 构建步骤记录了实际执行程序的摘要；两个程序与预编译版本的字节不同。
+独立复核确认 69 个实际构建程序的当前字节，以及全部目标的构建摘要。
+两处源码的 3,973 个持有文件均通过整轮文件身份和摘要检查。
+八项依赖输入、六项依赖观察、Provider、Engine、库存和原始资源配置检查均通过。
+快照镜像已按本轮标记精确回收；两个旧安装失败容器保持停止状态。
+原始报告为 `.temp/gate-run/20261020T004202-a2c31c90/report.json`。
+独立复核记录为 `.temp/p23-full64/r21-exec-user-policy-current-investigation/policy-integration/production-current-fixture-repair/formal-current/orb-management-disconnect-normal-final-current-v2/current-final-independent-terminal-review.json`。
+
+当前兼容合同仍为 `no_go`，不声明全部 65 个成员通过。
+九个目录成员的证据缺口和两项 snapshot 来源冲突仍未解决。
+原发行包缺少本次用户策略修复；三宿主包、完整安装矩阵、压力测试和发行报告仍待资格验证。
+以下段落保留各批次的历史输入和结果。
+
+2026-10-19（UTC），Ubuntu 24.04 ARM64 和 Debian 13 ARM64 的 user、system 安装范围均通过。
+四个范围保留原安装、服务生命周期和升级拒绝断言；0.3.0 的不兼容 Worker 仍被拒绝。
+原程序、receipt、密钥、配置和数据保持原值；本批容器均已回收。
+这些结果绑定候选 revision `fbe605015d484500d913b599a2d53a20226c250d`，不证明其他 revision 的发行包身份。
+当前 Linux 受控出口的三项原用例也已通过。
+构建准备改写了编译产物的元数据，外层守卫失败记录保留；独立只读复核确认用例结果和产物归属。
+
+同日，独立核查发现 exec 用户语义仍有缺陷。
+[官方 Container API](https://developers.cloudflare.com/containers/api/durable-object-container/)规定：裸 UID 使用 root，用户或组名称应使 exec 拒绝。
+当前 native 和 Broker 原样转发 `user`；真实 Engine 将裸 `65534` 按 UID 65534 执行，并接受 `root` 和 `nobody:nogroup`。
+五项 Engine 探针均取得结果；探针容器已回收，八个持有输入、六项观察和 73 个程序均保持原字节。
+本批只验证 Engine 行为和转发源码，不替代公开 Container API 复验。
+Broker 注册也未携带调度策略，尚不能区分两种策略的用户能力合同。
+官方文档要求 `durable_object` 策略中的非 root 用户保留 root 能力；默认策略中的非 root 用户不保留能力。
+裸 UID 和名称拒绝规则已在 Broker 修复。
+原实现的新增回归先失败；修复后六项 exec 单元用例全部通过，零项 ignored。
+本批发现 976 项单元用例，只执行 exec 模块六项；环境为 Linux ARM64、4 GiB、2 CPU。
+本批源码摘要为 `2a5ca50cb20ab721397eec476cf1ef9bffdc427bd357486891c95ca7b65c8830`。
+构建后内存已恢复为 4 GiB，原配置字节保持不变。
+临时凭据实现的四项单元用例已通过，零项跳过；测试使用 Linux ARM64、4 GiB、2 CPU。
+隔离 Engine 探针确认非 root 主进程和 exec 子进程可保留原能力上限；默认非 root 对照没有有效能力。
+探针未启用特权模式，也未增加能力；两只容器均已回收。
+持久化调度策略已接入 Broker 注册源码；私有 schema 更新为 3。
+当前 helper 的 42 项顶层测试、5 项子测试和隔离凭据验证均已通过；语句覆盖率为 90.2%。
+隔离验证使用 scratch 镜像，无基础镜像下载和宿主 root；本批镜像与容器均已回收。
+默认策略和 Durable Object 策略的公开回归已加入原普通产品用例；夹具 strict 与官方 cf build 已通过。
+该初始批次尚未完成新 Rust 编译、Provider 资格、真实产品、coverage、最终 Gate 和发行包资格。
+该批次使用旧 Provider；当时的公开 API、完整 65 成员和发行资格仍未通过。
+源码差异证据为 `.temp/p23-full64/r21-exec-user-policy-current-investigation/root-terminal-review.json`。
+单元结果为同一目录下 `numeric-user-candidate/green2-test-actual/result.json`。
 
 同日，Ubuntu 24 ARM64 的真实 user 安装／升级夹具发现升级缺陷。
 候选包首装和服务启停通过；0.3.0 升级命令成功退出，但旧 Worker 请求返回 HTTP 500。
