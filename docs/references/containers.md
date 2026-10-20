@@ -6,6 +6,8 @@ Broker 执行受限的 Docker 操作。`ocd` 不启动 Docker 或 Broker，不�
 当前 [P23](../implemented/p23-cloudflare-containers.md) 已接入基础 13 个 Docker operation family；产品验收状态由结果页记录。
 当前全量验收目标包含 snapshot capture、snapshot restore 和 `setInactivityTimeout()`。
 2026-10-20（UTC），R21 输入下的 Linux ARM64 coverage 和最终 Gate 已通过。
+同日，macOS ARM64 的当前 P23 两项真实产品用例均通过。
+原完整 macOS 批次与两个失败目标的分批复验分别保留，详见 [P23 结果](../implemented/p23-cloudflare-containers.md)。
 完整成员资格仍为 `blocked`。
 这些 stable 成员属于兼容目标，不属于 experimental。
 正式 workerd 输入由 [`workerd.lock.json`](../../packages/runtime/workerd.lock.json) 拥有。
@@ -452,7 +454,8 @@ exec 的退出码应来自目标进程；helper 意外退出不能证明目标�
 目标进程退出后，后代进程仍可继续输出。
 `exitCode` 应在目标进程退出后完成；`output()` 应等待输出流结束。
 新增 helper 的源码、正式 runtime pin、Provider 资格和产品回归须使用同一组输入。
-当前 helper 改动尚未完成这些验收。
+R21 当前输入已完成 helper、Provider 资格与 P23 真实产品回归。
+完整 stable API 的成员资格仍未通过；当前输入和原始报告见 [P23 结果](../implemented/p23-cloudflare-containers.md)。
 
 2026-10-12，维护中的 P23 场景新增独立对象的 exec 生命周期回归。
 回归核对真实子进程 PID，并在子进程退出后才释放后代进程的输出屏障。
@@ -460,7 +463,8 @@ exec 的退出码应来自目标进程；helper 意外退出不能证明目标�
 回归还删除该测试容器中的 `/bin/sh`，再以 `65534:65534` 在不可写目录执行程序。
 该输入使用官方文档要求的完整 `uid:gid`，回归同时核对 UID 和 GID。
 最后，回归要求 `destroy()` 中断仍活跃的 exec 输出，并核对 Broker 的正向清理证明。
-两个 strict TypeScript 检查与官方 cf build 均成功退出；真实产品执行仍待正式 R15 输入。
+该批当时通过两个 strict TypeScript 检查和官方 cf build；当时的真实产品仍待正式 R15 输入。
+后续 R21 产品结果见 [P23 结果](../implemented/p23-cloudflare-containers.md)。
 
 P23 场景还包含真实 HTTPS 和 WebSocket 断言。
 HTTPS 客户端使用注入 CA，并验证主机名、请求、响应和 EOF。
@@ -471,13 +475,19 @@ named images 回归使用两个已准入的镜像，并核对 Version 声明、g
 该回归核对显式 image 的实际输出，以及默认 Lite、自定义资源和字符串 Lite 的资源证明。
 自定义资源为 `0.03125` vCPU、`128` MiB 内存和 `1000` MB 磁盘。
 三项数值都不同于 Lite，回归逐项核对 SQLite 和 Engine 的资源配置。
+这些数值仅为本机资源映射的回归输入。
+2026-10-20（UTC）复核的 [Cloudflare 托管限制](https://developers.cloudflare.com/containers/platform/limits/)要求自定义规格至少使用 1 vCPU。
+同一文档要求每 vCPU 至少配置 3 GiB 内存。
+本机夹具的成功不证明同一组数值可用于托管环境。
 独立 DO 回归验证主进程数值信号 `10` 和 `34`、monitor 退出码、destroy 原因身份和 exec kill。
 快照回归直接读取持久化 artifact，核对字节数与 SHA-256。
 daemon 重启后，回归再次读取并核对同一 artifact。
 两次恢复后，回归复用 verified cache，扫描 OCI 的唯一 rootfs 层。
 回归拒绝 exec helper 文件、symlink、hardlink 和指向 helper 的 hardlink。
 该检查不另存 rootfs 或复制完整 artifact 到内存。
-这些产品断言尚未执行，不代表相应成员已通过验收。
+上述已维护的产品断言已通过 R21 输入的 Linux ARM64 整轮验证。
+macOS ARM64 的当前两项 P23 产品用例也已通过。
+这些结果不代表完整 65 成员资格通过。
 
 ## 日志设置
 
