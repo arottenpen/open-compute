@@ -20,13 +20,16 @@ snapshot、原生 inactivity timeout、主进程日志采集与其他后续能�
 本页下列基础验收记录不证明后续源码已通过验收。
 第 4.1 节的表格保留 R9 历史范围，不代表当前 65 个成员的逐项结果。
 
-**后续扩展状态（2026-10-19 UTC）：exec 用户策略修复已通过当前 coverage 和 Linux ARM64 最终 Gate；发行资格仍待完成。**
+**后续扩展状态（2026-10-20 UTC）：exec 用户策略修复已通过当前 coverage 和 Linux ARM64 最终 Gate；发行资格仍待完成。**
 正式 pin 为 R21，revision 为 `204a75bcfcc35fdf15756bef03eea867711847a6`。
 [R21 四平台 CI](https://github.com/elliothux/workerd/actions/runs/39042535973) 的五个 job 均成功。
 十个 immutable Release asset 已校验；正式 lock 已更新。
 
-2026-10-19（UTC），exec 用户策略的集成修复完成 Linux ARM64 全轮验证。
+2026-10-20（UTC），exec 用户策略的集成修复完成 Linux ARM64 全轮验证。
 被测源码摘要为 `639499080ce14ed7a2a67a18fbcebf1941e788735229d3ea2061db329c9a6076`。
+原始 coverage 和最终 Gate 报告的 revision 字段均为 `cd78385a069f3a877c65adfd84ec8c783a336852`。
+报告按 runner 算法记录的源码摘要为 `cccb3af22051e1b3af18eb47edec5c39336c655080e4e4870473926fb0494917`。
+生产与 Rust 输入快照、原始报告和候选输入复核分别保留；输入等价复核不替代正式 tag 资格。
 原版 coverage 通过 63 个目标、2,053 项用例，环境为 4 GiB、2 CPU。
 行覆盖率为 90.761046%（168,202／185,324），使用 68 个 object 和 138 个新 profile。
 随后，原版未插桩最终 Gate 通过相同的 63 个目标和 2,053 项用例。
@@ -42,8 +45,38 @@ Gate 构建步骤记录了实际执行程序的摘要；两个程序与预编译
 独立复核记录为 `.temp/p23-full64/r21-exec-user-policy-current-investigation/policy-integration/production-current-fixture-repair/formal-current/orb-management-disconnect-normal-final-current-v2/current-final-independent-terminal-review.json`。
 
 当前兼容合同仍为 `no_go`，不声明全部 65 个成员通过。
-九个目录成员的证据缺口和两项 snapshot 来源冲突仍未解决。
-原发行包缺少本次用户策略修复；三宿主包、完整安装矩阵、压力测试和发行报告仍待资格验证。
+本地兼容清单的类型来源已更正为固定的 `5.20260930.2`；65 个成员的状态未提升。
+九个目录成员仍缺少稳定生产入口和正向恢复证据。
+2026-09-01（UTC），上游 [PR #7123](https://github.com/cloudflare/workerd/pull/7123) 将 `snapshotDirectory()` 放回实验开关。
+固定稳定类型仍保留九个目录快照和恢复成员。
+2026-09-21（UTC），上游 [PR #7453](https://github.com/cloudflare/workerd/pull/7453) 将 `snapshotContainer()` 的选项改为可省略。
+两项改动均已进入固定 R21 的上游基线；可省略选项也与已保留的托管实测一致。
+当前官方文档仍声明省略选项应抛出 `TypeError`。
+恢复后的 `inspect().image` 也存在文档与托管实测差异；两项来源差异继续保留。
+2026-10-20（UTC），Linux ARM64 和 macOS ARM64 发行包均已构建。
+两个包均绑定 revision `8ee3babe5319d3001b3663c58475af970f16ddce`，并包含本次用户策略修复。
+Linux ARM64 的原四项 package 用例和两项 Dashboard 用例均通过。
+同一包在 Ubuntu 24.04、Debian 13 的 user、system 四个安装范围均通过。
+macOS ARM64 的原四项 package 用例已在普通账户下通过，耗时 274.87 秒。
+本批为四项通过、零项失败、零项 ignored。
+临时账号、home 和 staging 已回收；17 个对象的 ACL 已恢复。
+源码、原程序、Native 输入和原始 Orb 配置检查均通过。
+Linux x64 候选包也已构建，并通过原四项 package 用例。
+本批为四项通过、零项失败、零项 ignored，实际测试耗时 130.53 秒。
+同一 x64 包在 Ubuntu 24.04、Debian 13 的 user、system 四个安装范围均通过。
+不兼容的 0.3.0 升级按声明拒绝；原程序、receipt、密钥、配置和数据检查均通过。
+三个原生候选包均绑定上述 revision，尚不证明正式 tag 工作流资格。
+[x64 验收](https://github.com/elliothux/open-compute/actions/runs/39391746780)的完整压力测试仍在执行，范围包含一小时 soak。
+[macOS 安装验收](https://github.com/elliothux/open-compute/actions/runs/39398464481)已在干净宿主通过。
+该宿主构建的包通过原四项用例，耗时 137.23 秒；user、system 两个安装范围均通过。
+该包与前述本地普通账户包的字节不同；两组产物和证据分别保留。
+三平台共五个 OS／架构任务、十个安装范围的证据已收齐。
+macOS 最终 workspace Gate、完整压力测试和正式发行报告仍待资格验证。
+当前 CI 的 S3 测试失败；只读复核确认测试 bucket 不存在，返回 HTTP 404。
+当前 CI 另有一项旧平台矩阵文本断言失败。
+本地修复保留正式发行的三个平台；100 项夹具工具测试均通过，尚未提交修复。
+当前包的证据清单为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-release-evidence-inventory.json`。
+这些包检查不替代全部 65 个成员的兼容资格，也不证明发行流程已经通过。
 以下段落保留各批次的历史输入和结果。
 
 2026-10-19（UTC），Ubuntu 24.04 ARM64 和 Debian 13 ARM64 的 user、system 安装范围均通过。

@@ -5,7 +5,8 @@ Broker 执行受限的 Docker 操作。`ocd` 不启动 Docker 或 Broker，不�
 
 当前 [P23](../implemented/p23-cloudflare-containers.md) 已接入基础 13 个 Docker operation family；产品验收状态由结果页记录。
 当前全量验收目标包含 snapshot capture、snapshot restore 和 `setInactivityTimeout()`。
-R20 的 workspace coverage 和最终 Gate 已通过；完整成员资格仍为 `blocked`。
+2026-10-20（UTC），R21 输入下的 Linux ARM64 coverage 和最终 Gate 已通过。
+完整成员资格仍为 `blocked`。
 这些 stable 成员属于兼容目标，不属于 experimental。
 正式 workerd 输入由 [`workerd.lock.json`](../../packages/runtime/workerd.lock.json) 拥有。
 Provider 资格、产品 Gate 与成员资格是不同证据。
@@ -236,7 +237,8 @@ named images 边界见 [Scheduling Policies](https://developers.cloudflare.com/c
 
 ## 快照持久化与回收（验收中）
 
-本节说明当前源码的快照流程，不代表正式 runtime pin 或产品 Gate 已通过。
+本节定义当前本地快照流程；R21 的真实产品结果和原始报告由 [P23](../implemented/p23-cloudflare-containers.md) 记录。
+该结果不证明全部 65 个成员或正式发行资格。
 官方快照合同见 [Snapshots](https://developers.cloudflare.com/containers/guides/snapshots/)，于 2026-10-12 核对。
 快照保存文件系统，不保存内存、进程或挂载文件系统。
 快照只能在同一 application 和原始镜像版本内恢复，可跨 Durable Object 使用。
@@ -282,7 +284,8 @@ Engine 保留已导入的镜像缓存；快照到期或 application 删除不会
 snapshot 配额和 lease 的 `cleanupComplete` 不计入或回收 Engine 镜像缓存。
 operator 应单独预算 Engine 磁盘，并回收已不用的镜像缓存。
 托管结果尚未确定完整计量公式；该成员的兼容性保持 `blocked`。
-新增产品断言核对持久化大小、新快照镜像的 Engine 大小和重启后的同一数值，尚未执行。
+当前 P23 产品用例已核对持久化大小、新快照镜像的 Engine 大小和重启后的同一数值。
+这些本地不变量不证明托管计量公式相同。
 
 ### CF 对比证据与冲突
 
@@ -337,7 +340,7 @@ application 删除不证明 snapshot 字节已回收或计费停止。
 删除 application 后的 snapshot 保留行为未确定。
 证据标识为 `inspect-image-controlled-19-preparation/hosted-observations-review.json`。
 
-当前文档与托管结果存在两项未解决的运行行为冲突，兼容性声明保持 `blocked`：
+当前官方文档与固定版本、托管结果存在两项来源差异，兼容性声明保持 `blocked`：
 
 | 行为                             | 官方来源（文档更新于 2026-09-30） | 2026-10-12 托管结果             | 当前实现                                     |
 | -------------------------------- | --------------------------------- | ------------------------------- | -------------------------------------------- |
@@ -347,6 +350,9 @@ application 删除不证明 snapshot 字节已回收或计费停止。
 文档来源为 [Durable Object Container API](https://developers.cloudflare.com/containers/api/durable-object-container/)。
 固定 types 为 `@cloudflare/workers-types@5.20260930.2`。
 匹配 upstream workerd revision 为 `d99bc6b777e35d72d71c2f1fe2fd1db53284528a`。
+2026-09-21（UTC），上游 [PR #7453](https://github.com/cloudflare/workerd/pull/7453) 将 `snapshotContainer()` 的选项改为可省略。
+固定 R21 的上游基线包含该修复；修复不含 compatibility date 分支。
+该版本行为与已保留的托管成功观察一致，官方 API 文档仍声明选项必填。
 平台不按环境切换上述行为，也不增加兼容分支。
 
 官方文档另已说明 exec stream 的类型与运行值差异。
@@ -375,6 +381,12 @@ application 删除不证明 snapshot 字节已回收或计费停止。
 调查未取得可供 stable startup 恢复的合法目录句柄；九个目录成员继续保持 `blocked`。
 该结论只覆盖已查公开来源，不证明私有 API 或账号开关不存在。
 调查记录为 `.temp/p23-full64/directory-stable-input-investigation/report.json`。
+
+2026-10-20（UTC），只读复核补充了上游变更依据。
+上游于 2026-09-01（UTC）合入 [PR #7123](https://github.com/cloudflare/workerd/pull/7123)。
+该改动将 `snapshotDirectory()` 放回实验开关，并从稳定声明中移除该方法。
+固定 R21 的上游基线包含该改动；稳定声明仍保留九个目录快照和恢复成员。
+该来源不替代合法稳定句柄和正向恢复验收。
 
 2026-10-12，启动环境变量探针确认非空名称可包含 ASCII 字母、数字、下划线、点和连字符。
 257 字符名称启动成功；Unicode 和空名称被 `monitor()` 拒绝。
