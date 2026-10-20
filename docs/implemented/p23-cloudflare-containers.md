@@ -66,15 +66,24 @@ Linux x64 候选包也已构建，并通过原四项 package 用例。
 同一 x64 包在 Ubuntu 24.04、Debian 13 的 user、system 四个安装范围均通过。
 不兼容的 0.3.0 升级按声明拒绝；原程序、receipt、密钥、配置和数据检查均通过。
 三个原生候选包均绑定上述 revision，尚不证明正式 tag 工作流资格。
-[x64 验收](https://github.com/elliothux/open-compute/actions/runs/39391746780)的完整压力测试仍在执行，范围包含一小时 soak。
+[x64 验收](https://github.com/elliothux/open-compute/actions/runs/39391746780)已在 2026-10-20（UTC）成功结束。
+五个完整压力档均通过；实际限制为 2 CPU、4 GiB。
+29 组性能测量共取得 1,113,500 个样本，记录 723 次请求错误；各组均满足原 SLO 阈值。
+本批没有降低负载、缩短观察或放宽阈值。
+恢复观察从 11:13:22 持续至 12:13:54（UTC），实际经过 3,632 秒。
+三次注入重启均通过 readiness 和后续状态一致性复核。
+报告保留候选 revision `8ee3babe5319d3001b3663c58475af970f16ddce`、x64 二进制摘要和正式 R21 lock 摘要。
+监控自然退出为 0；原监控进程已不存在，没有重启 CI。
+压力报告复核为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/linux-x64-stress-terminal-evidence/root-stress-terminal-review.json`。
 [macOS 安装验收](https://github.com/elliothux/open-compute/actions/runs/39398464481)已在干净宿主通过。
 该宿主构建的包通过原四项用例，耗时 137.23 秒；user、system 两个安装范围均通过。
 该包与前述本地普通账户包的字节不同；两组产物和证据分别保留。
 三平台共五个 OS／架构任务、十个安装范围的证据已收齐。
-macOS 最终 workspace Gate、完整压力测试和正式发行报告仍待资格验证。
+macOS 最终 workspace Gate 和正式发行报告仍待资格验证。
 当前 CI 的 S3 测试失败；只读复核确认测试 bucket 不存在，返回 HTTP 404。
 当前 CI 另有一项旧平台矩阵文本断言失败。
-本地修复保留正式发行的三个平台；100 项夹具工具测试均通过，尚未提交修复。
+本地修复保留正式发行的三个平台；100 项夹具工具测试均通过。
+修复已形成独立本地提交，尚未推送 main。
 当前包的证据清单为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-release-evidence-inventory.json`。
 这些包检查不替代全部 65 个成员的兼容资格，也不证明发行流程已经通过。
 以下段落保留各批次的历史输入和结果。
