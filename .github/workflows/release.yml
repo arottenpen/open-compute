@@ -6,17 +6,25 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      target:
+        description: Native candidate package and installation host
+        required: true
+        type: choice
+        default: linux-x64
+        options:
+          - linux-x64
+          - darwin-arm64
       candidate-revision:
-        description: Full immutable source commit for native Linux x64 qualification only
+        description: Full immutable source commit for native candidate qualification only
         required: true
         type: string
       fixture-run-id:
-        description: Completed main CI run with successful native amd64 fixture images for that commit
+        description: Verified fixture run from main CI (x64) or the manual native producer (Darwin ARM64)
         required: true
         type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('candidate-{0}-{1}', github.ref, inputs.target) || format('release-{0}', github.ref) }}
   cancel-in-progress: false
 
 # Release tags consume the reusable default-branch caches without creating
@@ -351,7 +359,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"target":"linux-x64","os":"ubuntu-24.04"}]' || '[{"target":"darwin-arm64","os":"macos-15"},{"target":"linux-arm64","os":"ubuntu-24.04-arm"},{"target":"linux-x64","os":"ubuntu-24.04"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && (inputs.target == 'darwin-arm64' && '[{"target":"darwin-arm64","os":"macos-15"}]' || '[{"target":"linux-x64","os":"ubuntu-24.04"}]') || '[{"target":"darwin-arm64","os":"macos-15"},{"target":"linux-arm64","os":"ubuntu-24.04-arm"},{"target":"linux-x64","os":"ubuntu-24.04"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -365,24 +373,33 @@ jobs:
         env:
           CANDIDATE_REVISION: ${{ inputs.candidate-revision }}
           FIXTURE_RUN_ID: ${{ inputs.fixture-run-id }}
+          IMAGE_ARCHITECTURE: ${{ matrix.target == 'darwin-arm64' && 'arm64' || 'amd64' }}
         with:
           script: |
             const revision = process.env.CANDIDATE_REVISION;
             const runId = process.env.FIXTURE_RUN_ID;
             if (!/^[0-9a-f]{40}$/.test(revision) || !/^[1-9][0-9]*$/.test(runId)
                 || !Number.isSafeInteger(Number(runId))) throw new Error("Invalid candidate identity");
+            const architecture = process.env.IMAGE_ARCHITECTURE;
+            if (!["amd64", "arm64"].includes(architecture)) throw new Error("Invalid fixture architecture");
             const repo = context.repo;
             const {data: run} = await github.rest.actions.getWorkflowRun({...repo, run_id: Number(runId)});
-            if (run.id !== Number(runId) || run.head_sha !== revision || run.status !== "completed" || run.event !== "push"
-                || run.head_branch !== "main" || run.path !== ".github/workflows/ci.yml"
-                || run.head_repository.id !== run.repository.id) throw new Error("Fixture run source mismatch");
+            const mainProducer = architecture === "amd64" && run.head_sha === revision
+              && run.event === "push" && run.path === ".github/workflows/ci.yml";
+            const candidateProducer = architecture === "arm64" && run.head_sha === context.sha
+              && run.event === "workflow_dispatch" && run.path === ".github/workflows/container-images.yml";
+            if (run.id !== Number(runId) || run.status !== "completed" || (!mainProducer && !candidateProducer)
+                || run.head_branch !== "main" || run.head_repository.id !== run.repository.id)
+              throw new Error("Fixture run source mismatch");
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {...repo, run_id: run.id});
-            const producers = jobs.filter(job => job.name === "fixture-images / images (ubuntu-24.04, amd64)");
+            const producerName = mainProducer ? "fixture-images / images (ubuntu-24.04, amd64)"
+              : "images (ubuntu-24.04-arm, arm64)";
+            const producers = jobs.filter(job => job.name === producerName);
             if (producers.length !== 1 || producers[0].status !== "completed"
                 || producers[0].conclusion !== "success") throw new Error("Native fixture producer did not pass");
             const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {...repo, run_id: run.id});
-            const matches = artifacts.filter(artifact => artifact.name === "p23-images-amd64");
-            if (matches.length !== 1 || matches[0].expired || matches[0].workflow_run.id !== run.id || matches[0].workflow_run.head_sha !== revision
+            const matches = artifacts.filter(artifact => artifact.name === `p23-images-${architecture}`);
+            if (matches.length !== 1 || matches[0].expired || matches[0].workflow_run.id !== run.id || matches[0].workflow_run.head_sha !== run.head_sha
                 || matches[0].workflow_run.repository_id !== run.repository.id
                 || matches[0].workflow_run.head_repository_id !== run.repository.id
                 || !/^sha256:[0-9a-f]{64}$/.test(matches[0].digest)) throw new Error("Fixture artifact mismatch");
@@ -399,26 +416,46 @@ jobs:
               fixtureProducerJob: producers[0].id, artifact: matches[0], publicationAuthorized: false
             }, null, 2) + "\n", {flag: "wx", mode: 0o600});
             core.setOutput("tag", `v${version}`);
+            core.setOutput("architecture", architecture);
       - uses: actions/download-artifact@v8
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: p23-images-amd64
+          name: p23-images-${{ steps.candidate.outputs.architecture }}
           run-id: ${{ inputs.fixture-run-id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/p23-fixture-images
+      - uses: ./.github/actions/setup-open-compute
       - name: Verify reused native fixture graphs against candidate sources
         if: github.event_name == 'workflow_dispatch'
         shell: bash
+        env:
+          IMAGE_ARCHITECTURE: ${{ steps.candidate.outputs.architecture }}
+          CANDIDATE_REVISION: ${{ inputs.candidate-revision }}
+          WORKFLOW_REVISION: ${{ github.sha }}
+          FIXTURE_RUN_ID: ${{ inputs.fixture-run-id }}
         run: |
           set -euo pipefail
           umask 077
           directory="$(realpath "$RUNNER_TEMP/p23-fixture-images")"
           input="$RUNNER_TEMP/p23-build-input.json"
           test ! -e "$input"
+          if [ "$IMAGE_ARCHITECTURE" = arm64 ]; then
+            python3 -I -B - "$directory/candidate-source.json" <<'PYTHON'
+          import json, os, pathlib, subprocess, sys
+          path = pathlib.Path(sys.argv[1])
+          assert path.is_file() and not path.is_symlink() and path.stat().st_nlink == 1 and path.stat().st_size <= 4096
+          proof = json.loads(path.read_text())
+          assert type(proof.get('schemaVersion')) is int and type(proof.get('runId')) is int
+          expected = {'schemaVersion': 1, 'sourceRevision': os.environ['CANDIDATE_REVISION'],
+                      'sourceTree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                      'workflowRevision': os.environ['WORKFLOW_REVISION'],
+                      'runId': int(os.environ['FIXTURE_RUN_ID']), 'architecture': 'arm64'}
+          assert proof == expected
+          PYTHON
+          fi
           python3 -I -B test/containers-fixture/consume-images.py \
-            --directory "$directory" --architecture amd64 > "$input"
+            --directory "$directory" --architecture "$IMAGE_ARCHITECTURE" > "$input"
           echo "OPEN_COMPUTE_TEST_CONTAINERS_INPUT=$input" >> "$GITHUB_ENV"
-      - uses: ./.github/actions/setup-open-compute
       - uses: ./.github/actions/prepare-container-fixture-images
         if: github.event_name == 'push'
       - name: Fetch locked crates for offline packaged-binary tests
@@ -553,7 +590,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[{"name":"ubuntu-24-x64","os":"ubuntu-24.04","target":"linux-x64","image":"ubuntu:24.04"},{"name":"debian-13-x64","os":"ubuntu-24.04","target":"linux-x64","image":"debian:13-slim"}]' || '[{"name":"ubuntu-24-x64","os":"ubuntu-24.04","target":"linux-x64","image":"ubuntu:24.04"},{"name":"ubuntu-24-arm64","os":"ubuntu-24.04-arm","target":"linux-arm64","image":"ubuntu:24.04"},{"name":"debian-13-x64","os":"ubuntu-24.04","target":"linux-x64","image":"debian:13-slim"},{"name":"debian-13-arm64","os":"ubuntu-24.04-arm","target":"linux-arm64","image":"debian:13-slim"},{"name":"macos-arm64","os":"macos-15","target":"darwin-arm64","image":"native"}]') }}
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && (inputs.target == 'darwin-arm64' && '[{"name":"macos-arm64","os":"macos-15","target":"darwin-arm64","image":"native"}]' || '[{"name":"ubuntu-24-x64","os":"ubuntu-24.04","target":"linux-x64","image":"ubuntu:24.04"},{"name":"debian-13-x64","os":"ubuntu-24.04","target":"linux-x64","image":"debian:13-slim"}]') || '[{"name":"ubuntu-24-x64","os":"ubuntu-24.04","target":"linux-x64","image":"ubuntu:24.04"},{"name":"ubuntu-24-arm64","os":"ubuntu-24.04-arm","target":"linux-arm64","image":"ubuntu:24.04"},{"name":"debian-13-x64","os":"ubuntu-24.04","target":"linux-x64","image":"debian:13-slim"},{"name":"debian-13-arm64","os":"ubuntu-24.04-arm","target":"linux-arm64","image":"debian:13-slim"},{"name":"macos-arm64","os":"macos-15","target":"darwin-arm64","image":"native"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -691,7 +728,7 @@ jobs:
 
   stress:
     needs: [failfast, package]
-    if: ${{ always() && !cancelled() && needs.package.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.failfast.result == 'success') }}
+    if: ${{ always() && !cancelled() && needs.package.result == 'success' && ((github.event_name == 'workflow_dispatch' && inputs.target == 'linux-x64') || needs.failfast.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
