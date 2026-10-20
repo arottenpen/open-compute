@@ -10,6 +10,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -983,7 +984,7 @@ test("installation qualification is a mandatory publication dependency", async (
     "debian-13-arm64",
     "macos-arm64",
   ]) {
-    assert.match(workflow, new RegExp(`- name: ${name}\\n`));
+    assert.ok(workflow.includes(`"name":"${name}"`));
   }
   assert.match(workflow, /for scope in user system/);
   assert.match(
@@ -1000,4 +1001,174 @@ test("installation qualification is a mandatory publication dependency", async (
       cwd: fileURLToPath(new URL("../", import.meta.url)),
     },
   );
+});
+
+test("manual native qualification preserves immutable inputs and cannot publish", async () => {
+  const { stdout } = await execFileAsync("bun", [
+    "-e",
+    "console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.argv[1]).text())))",
+    releaseWorkflowPath,
+  ]);
+  const workflow = JSON.parse(stdout);
+  assert.deepEqual(Object.keys(workflow.on), ["push", "workflow_dispatch"]);
+  assert.equal(workflow.jobs.failfast.if, "github.event_name == 'push'");
+  assert.equal(workflow.jobs.publish.if, "github.event_name == 'push'");
+  assert.deepEqual(workflow.jobs.publish.permissions, {
+    contents: "write",
+    actions: "read",
+  });
+  assert.deepEqual(workflow.permissions, { contents: "read", actions: "read" });
+  for (const name of ["package", "install-lifecycle"]) {
+    const matrices = [
+      ...workflow.jobs[name].strategy.matrix.include.matchAll(/'([\[{].*?)'/g),
+    ].map((match) => JSON.parse(match[1]));
+    assert.equal(matrices.length, 2);
+    assert.deepEqual(
+      matrices[0].map((item) => item.target),
+      name === "package" ? ["linux-x64"] : ["linux-x64", "linux-x64"],
+    );
+    assert.equal(matrices[1].length, name === "package" ? 3 : 5);
+  }
+  for (const name of ["package", "install-lifecycle", "stress"]) {
+    const job = workflow.jobs[name];
+    assert.match(job.if, /always\(\) && !cancelled\(\)/);
+    assert.equal(
+      job.steps.find((step) => step.uses === "actions/checkout@v7").with.ref,
+      "${{ inputs.candidate-revision || github.sha }}",
+    );
+  }
+  const step = workflow.jobs.package.steps.find(
+    (step) => step.id === "candidate",
+  );
+  const check = new (Object.getPrototypeOf(async function () {}).constructor)(
+    "github",
+    "context",
+    "core",
+    "process",
+    "require",
+    step.with.script,
+  );
+  const revision = (
+    await execFileAsync("git", ["rev-parse", "HEAD"])
+  ).stdout.trim();
+  const context = {
+    repo: { owner: "owner", repo: "repo" },
+    sha: "f".repeat(40),
+  };
+  const base = {
+    run: {
+      id: 123,
+      head_sha: revision,
+      status: "completed",
+      event: "push",
+      head_branch: "main",
+      path: ".github/workflows/ci.yml",
+      head_repository: { id: 42 },
+      repository: { id: 42 },
+    },
+    jobs: [
+      {
+        id: 456,
+        name: "fixture-images / images (ubuntu-24.04, amd64)",
+        status: "completed",
+        conclusion: "success",
+      },
+    ],
+    artifacts: [
+      {
+        id: 789,
+        name: "p23-images-amd64",
+        expired: false,
+        digest: "sha256:" + "a".repeat(64),
+        workflow_run: {
+          id: 123,
+          head_sha: revision,
+          repository_id: 42,
+          head_repository_id: 42,
+        },
+      },
+    ],
+  };
+  async function invoke(change = () => {}, env = {}) {
+    const root = await mkdtemp(join(tmpdir(), "oc-candidate-"));
+    const data = structuredClone(base);
+    change(data);
+    const methods = {
+      getWorkflowRun: "run",
+      listJobsForWorkflowRun: "jobs",
+      listWorkflowRunArtifacts: "artifacts",
+    };
+    const github = {
+      rest: { actions: methods },
+      paginate: async (method) => data[method],
+    };
+    github.rest.actions.getWorkflowRun = async () => ({ data: data.run });
+    let output;
+    try {
+      await check(
+        github,
+        context,
+        {
+          setOutput: (name, value) => {
+            assert.equal(name, "tag");
+            output = value;
+          },
+        },
+        {
+          env: {
+            CANDIDATE_REVISION: revision,
+            FIXTURE_RUN_ID: "123",
+            RUNNER_TEMP: root,
+            ...env,
+          },
+        },
+        createRequire(import.meta.url),
+      );
+      const proof = JSON.parse(
+        await readFile(join(root, "candidate-provenance.json"), "utf8"),
+      );
+      assert.equal(proof.candidateRevision, revision);
+      assert.equal(proof.workflowRevision, context.sha);
+      assert.equal(proof.publicationAuthorized, false);
+      assert.match(output, /^v[0-9]+\.[0-9]+\.[0-9]+$/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+  await invoke();
+  for (const change of [
+    (data) => {
+      data.run.head_sha = "0".repeat(40);
+    },
+    (data) => {
+      data.run.status = "in_progress";
+    },
+    (data) => {
+      data.run.head_repository.id = 7;
+    },
+    (data) => {
+      data.jobs[0].conclusion = "failure";
+    },
+    (data) => {
+      data.jobs.push(data.jobs[0]);
+    },
+    (data) => {
+      data.artifacts[0].expired = true;
+    },
+    (data) => {
+      data.artifacts.push(data.artifacts[0]);
+    },
+    (data) => {
+      data.artifacts[0].workflow_run.id = 8;
+    },
+    (data) => {
+      data.artifacts[0].workflow_run.head_sha = "0".repeat(40);
+    },
+    (data) => {
+      data.artifacts[0].digest = "not-a-digest";
+    },
+  ])
+    await assert.rejects(invoke(change));
+  await assert.rejects(invoke(undefined, { CANDIDATE_REVISION: "main" }));
+  await assert.rejects(invoke(undefined, { FIXTURE_RUN_ID: "123;false" }));
 });
