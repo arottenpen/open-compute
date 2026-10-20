@@ -49,6 +49,9 @@ Gate 构建步骤记录了实际执行程序的摘要；两个程序与预编译
 当前兼容合同仍为 `no_go`，不声明全部 65 个成员通过。
 本地兼容清单的类型来源已更正为固定的 `5.20260930.2`；65 个成员的状态未提升。
 九个目录成员仍缺少稳定生产入口和正向恢复证据。
+已保留的托管观测中，仅含 `mountPoint` 的启动失败。
+该观测的 `monitor` 拒绝，`inspect()` 返回 `null`。
+这组负向子集不证明目录快照生产或正向恢复。
 2026-09-01（UTC），上游 [PR #7123](https://github.com/cloudflare/workerd/pull/7123) 将 `snapshotDirectory()` 放回实验开关。
 固定稳定类型仍保留九个目录快照和恢复成员。
 2026-09-21（UTC），上游 [PR #7453](https://github.com/cloudflare/workerd/pull/7453) 将 `snapshotContainer()` 的选项改为可省略。
@@ -88,7 +91,22 @@ Provider、Engine、源码、输入和原始 Orb 配置检查均通过。
 loopback 地址、hosts 原文与权限、三个监听端口和临时证书目录均已恢复。
 这项本地验证绑定前述被测源码，不证明正式 tag 工作流已经执行。
 复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-controlled-egress-preparation/root-current-controlled-egress-terminal-review.json`。
-macOS 最终 workspace Gate 和正式发行报告仍待资格验证。
+2026-10-20（UTC），macOS ARM64 的原版最终 workspace Gate 完成 63 个目标、2,061 项 discovery。
+原批次通过 61 个目标，共 2,054 项用例；两个目标失败，原报告保持 `failed`。
+P23 两项真实产品用例均通过，耗时 430.00 秒。
+`single-binary` 使用了错误角色的二进制；`p22-browser-run` 缺少官方构建产物。
+修正输入角色并完成原有官方夹具构建后，仅复验这两个目标的原七项用例。
+七项全部通过，零项失败、零项 ignored；浏览器耗时 278.58 秒，单文件测试耗时 209.85 秒。
+两批报告均保留 revision `ff7dc6836829c177a2c2185082d2285fa4447af5`。
+两批的 Gate 源码摘要均为 `ce8ee9e6690c573d105b221205d748462c4c6c929d0a4fe71925f61f7fded9f7`。
+独立复核按原 discovery 去重，确认 63 个目标、2,061 项用例均有通过证据。
+原完整批次没有重跑；分批复核不把原报告改为 `passed`。
+源码、持有输入、Native 守卫、原始配置、库存和临时目录回收检查均通过。
+本轮快照镜像按原归属标记精确回收；旧容器保持原状态。
+原全量结束后，磁盘余量低于当批保守预留线；预算未通过的记录保留。
+两目标复验满足独立的固定空间门槛，门槛高于文档要求的 44 GiB。
+复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/local-macos-two-preparation-repairs-v3/root-terminal-and-full-diagnostics-review.json`。
+本地分批验证不替代正式 tag 工作流资格；正式发行报告仍待完成。
 当前 CI 的 S3 测试失败；只读复核确认测试 bucket 不存在，返回 HTTP 404。
 当前 CI 另有一项旧平台矩阵文本断言失败。
 本地修复保留正式发行的三个平台；100 项夹具工具测试均通过。
