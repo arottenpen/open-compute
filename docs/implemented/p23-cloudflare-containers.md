@@ -25,7 +25,7 @@ snapshot、原生 inactivity timeout、主进程日志采集与其他后续能�
 [R21 四平台 CI](https://github.com/elliothux/workerd/actions/runs/39042535973) 的五个 job 均成功。
 十个 immutable Release asset 已校验；正式 lock 已更新。
 
-2026-10-20（UTC），exec 用户策略的集成修复完成 Linux ARM64 全轮验证。
+2026-10-19（UTC），exec 用户策略的集成修复完成 Linux ARM64 全轮验证。
 被测源码摘要为 `639499080ce14ed7a2a67a18fbcebf1941e788735229d3ea2061db329c9a6076`。
 原始 coverage 和最终 Gate 报告的 revision 字段均为 `cd78385a069f3a877c65adfd84ec8c783a336852`。
 报告按 runner 算法记录的源码摘要为 `cccb3af22051e1b3af18eb47edec5c39336c655080e4e4870473926fb0494917`。
@@ -34,6 +34,8 @@ snapshot、原生 inactivity timeout、主进程日志采集与其他后续能�
 行覆盖率为 90.761046%（168,202／185,324），使用 68 个 object 和 138 个新 profile。
 随后，原版未插桩最终 Gate 通过相同的 63 个目标和 2,053 项用例。
 最终 Gate 耗时 5,605.09 秒；P23 两项真实产品用例通过，耗时 426.21 秒。
+原始父进程记录的 UTC 完成时间为 `2026-10-19T18:15:32.152099+00:00`。
+Gate 目录名使用宿主本地时间 UTC+8，不代表 UTC 执行日期。
 
 额外文件守卫错误地要求可重建的测试程序保持文件身份不变；原失败报告保留。
 Gate 构建步骤记录了实际执行程序的摘要；两个程序与预编译版本的字节不同。
@@ -79,6 +81,13 @@ Linux x64 候选包也已构建，并通过原四项 package 用例。
 该宿主构建的包通过原四项用例，耗时 137.23 秒；user、system 两个安装范围均通过。
 该包与前述本地普通账户包的字节不同；两组产物和证据分别保留。
 三平台共五个 OS／架构任务、十个安装范围的证据已收齐。
+当前被测源码的 Linux ARM64 受控出口三项也已在 2026-10-20（UTC）通过。
+原 Gate 共耗时 149.27 秒，其中准备耗时 111.54 秒，测试进程耗时 36.20 秒。
+本批使用 4 GiB、2 CPU；八项依赖 FD 和六项观察均保持原身份和摘要。
+Provider、Engine、源码、输入和原始 Orb 配置检查均通过。
+loopback 地址、hosts 原文与权限、三个监听端口和临时证书目录均已恢复。
+这项本地验证绑定前述被测源码，不证明正式 tag 工作流已经执行。
+复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-controlled-egress-preparation/root-current-controlled-egress-terminal-review.json`。
 macOS 最终 workspace Gate 和正式发行报告仍待资格验证。
 当前 CI 的 S3 测试失败；只读复核确认测试 bucket 不存在，返回 HTTP 404。
 当前 CI 另有一项旧平台矩阵文本断言失败。
