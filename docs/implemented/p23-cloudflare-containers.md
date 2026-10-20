@@ -113,6 +113,22 @@ P23 两项真实产品用例均通过，耗时 430.00 秒。
 修复已形成独立本地提交，尚未推送 main。
 当前包的证据清单为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-release-evidence-inventory.json`。
 这些包检查不替代全部 65 个成员的兼容资格，也不证明发行流程已经通过。
+
+2026-10-20（UTC），本地候选补充零参数 `snapshotContainer()` 的真实成功回归。
+macOS ARM64 使用正式 R21 和独立的 4 GiB、2 CPU Engine，原 ordinary 用例通过，耗时 477.26 秒。
+本批发现三项用例，仅执行 ordinary；结果为一项通过、零项失败、零项 ignored、两项过滤。
+新增断言核对无 name 的新 handle、持久化状态、实际大小和跨对象恢复。
+原命名快照、S3 字节数与 SHA-256、helper 排除、保活和 daemon 重启恢复断言全部保留并通过。
+前一失败来自测试助手要求本地缓存命中；当时两个 snapshot 均为 Ready，零参数快照已恢复。
+共享助手现从 S3 读取归档并校验大小与 SHA-256，再用私有临时文件核对完整归档。
+原 180 秒读取期限和 1 GiB 缓存预算保持不变。
+本批持有文件、Native 输入、Provider、Engine、原始配置和库存检查均通过。
+本批自有进程、临时目录和一个快照镜像已回收；前一失败的数据库、日志和镜像导出归档保留。
+独立 exec 流与代码更新用例在前一测试候选中另批通过，耗时 96.28 秒。
+本批未执行新的完整 workspace Gate，也未提升 65 个成员的资格。
+当前单例复核为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/local-macos-omitted-snapshot-owner-v5/root-terminal-success-review.json`。
+助手断言复核为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-snapshot-authoritative-archive-test-repair/root-helper-preservation-and-source-review.json`。
+
 以下段落保留各批次的历史输入和结果。
 
 2026-10-19（UTC），Ubuntu 24.04 ARM64 和 Debian 13 ARM64 的 user、system 安装范围均通过。
