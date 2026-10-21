@@ -150,6 +150,19 @@ custom 输入为 `vcpu:1`、`memoryMib:3072` 和 `diskMb:4000`。
 九个目录成员仍缺稳定生产入口和正向恢复证据；全部 65 个成员的资格未提升。
 复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/authorized-external-execution-20261021/hosted-root-terminal-review.json`。
 
+2026-10-21（UTC），资源输入对照使用五次串行观测。
+前后两次 `1` vCPU、`3072` MiB、`4000` MB 均通过 readiness 和 inspection。
+中间三次输入分别为本机组合、仅降低 CPU、仅降低内存。
+本机组合为 `0.03125` vCPU、`128` MiB、`1000` MB。
+仅降低 CPU 的组合保留 `3072` MiB 和 `4000` MB。
+仅降低内存的组合保留 `1` vCPU 和 `4000` MB。
+三次请求均在 readiness 阶段返回受控 `Error`；容器销毁均成功。
+记录未捕获具体校验谓词，也未测量实际分配量。
+本机组合的本地成功与本次托管错误构成有限行为差异。
+本批不确定完整数值边界，也不提升成员资格。
+临时 Worker、应用和命名空间均已回收，执行前后的资源清单一致。
+复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-custom-resource-differential-preparation/root-terminal-review.json`。
+
 以下段落保留各批次的历史输入和结果。
 
 2026-10-19（UTC），Ubuntu 24.04 ARM64 和 Debian 13 ARM64 的 user、system 安装范围均通过。

@@ -479,6 +479,13 @@ named images 回归使用两个已准入的镜像，并核对 Version 声明、g
 2026-10-20（UTC）复核的 [Cloudflare 托管限制](https://developers.cloudflare.com/containers/platform/limits/)要求自定义规格至少使用 1 vCPU。
 同一文档要求每 vCPU 至少配置 3 GiB 内存。
 本机夹具的成功不证明同一组数值可用于托管环境。
+2026-10-21（UTC）的五次托管对照确认了有限差异。
+前后两次 `1` vCPU、`3072` MiB、`4000` MB 均启动成功。
+本机组合、仅降低 CPU 至 `0.03125`、仅降低内存至 `128` MiB 均返回 readiness `Error`。
+另外两项资源在单字段对照中保留前后成功值。
+这些结果不确定具体校验谓词、完整下限或实际分配量。
+本机资源映射的成功不证明相同输入可用于托管环境。
+
 独立 DO 回归验证主进程数值信号 `10` 和 `34`、monitor 退出码、destroy 原因身份和 exec kill。
 快照回归直接读取持久化 artifact，核对字节数与 SHA-256。
 daemon 重启后，回归再次读取并核对同一 artifact。

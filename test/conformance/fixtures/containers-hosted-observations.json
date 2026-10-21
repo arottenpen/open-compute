@@ -367,7 +367,7 @@
       "signatureSha256": "9c6f72cf30f5964070170ca444c9c7fd6129918a267fe6cf4f4b1d7958620b84",
       "maintainedStatus": "blocked",
       "hostedEvidenceClass": "observed-subset",
-      "observation": "Custom diskMb:4000 is accepted together with vcpu:1 and memoryMib:3072; readiness exec and inspect succeed. Effective disk allocation and numeric boundaries unverified.",
+      "observation": "Custom diskMb:4000 is accepted together with vcpu:1 and memoryMib:3072. The local tuple {vcpu:0.03125,memoryMib:128,diskMb:1000} returns a controlled readiness Error between two accepted controls. This does not isolate a disk predicate; effective allocation and numeric boundaries remain unverified.",
       "typeAndMatchingSourceEvidence": true,
       "fullMemberQualificationPassed": false
     },
@@ -376,7 +376,7 @@
       "signatureSha256": "0249201df54605705568d397ed7018355079eaba33c2dd2888c6afb8b279f33b",
       "maintainedStatus": "blocked",
       "hostedEvidenceClass": "observed-subset",
-      "observation": "Custom memoryMib:3072 is accepted together with vcpu:1 and diskMb:4000; readiness exec and inspect succeed. Effective memory allocation and numeric boundaries unverified.",
+      "observation": "Custom memoryMib:3072 is accepted with vcpu:1 and diskMb:4000. With only memoryMib changed to 128, readiness returns a controlled Error between accepted controls. The exact predicate, effective allocation and numeric boundaries remain unverified.",
       "typeAndMatchingSourceEvidence": true,
       "fullMemberQualificationPassed": false
     },
@@ -385,7 +385,7 @@
       "signatureSha256": "294047398eca52d4613fe59a40f73c47ffd5f70374395ce376f9c704982b919f",
       "maintainedStatus": "blocked",
       "hostedEvidenceClass": "observed-subset",
-      "observation": "Custom vcpu:1 is accepted together with memoryMib:3072 and diskMb:4000; readiness exec and inspect succeed. Effective CPU allocation and numeric boundaries unverified.",
+      "observation": "Custom vcpu:1 is accepted with memoryMib:3072 and diskMb:4000. With only vcpu changed to 0.03125, readiness returns a controlled Error between accepted controls. The exact predicate, effective allocation and numeric boundaries remain unverified.",
       "typeAndMatchingSourceEvidence": true,
       "fullMemberQualificationPassed": false
     },
@@ -466,7 +466,7 @@
       "signatureSha256": "0a93b1be717ce31a82a47352af98c126e29e018b5b28a7f87ec9bbba996fe9d6",
       "maintainedStatus": "blocked",
       "hostedEvidenceClass": "observed-subset",
-      "observation": "Named lite and custom {vcpu:1,memoryMib:3072,diskMb:4000} each start a real container; readiness exec, running, image and purpose label verified. Effective allocation and other profiles unverified.",
+      "observation": "Named lite and custom {vcpu:1,memoryMib:3072,diskMb:4000} each start a real container. A later differential brackets three controlled readiness Errors with two accepted custom controls: the local small tuple, CPU-only reduction and memory-only reduction. Each container is destroyed; effective allocation, exact failure predicates and complete profile semantics remain unverified.",
       "typeAndMatchingSourceEvidence": true,
       "fullMemberQualificationPassed": false
     },
@@ -677,6 +677,11 @@
       "evidencePath": ".temp/p23-full64/package-r21-main-8ee3-current-preparation/authorized-external-execution-20261021/hosted-root-terminal-review.json",
       "evidenceSha256": "7ad39ca58d403a4a9f1d39e1b2c7251945611798f801ed0fe2876d8d45c67c6d",
       "scope": "2026-10-21 UTC: five serial public actions observe eight stable members. HTTP specific/fallback interception and socket close, pre/active AbortSignal, kill(9), lite and custom startup accepted. Custom requests vcpu:1, memoryMib:3072 and diskMb:4000; actual allocation is not measured. Each container is destroyed before the next action. Exact temporary Worker/application/namespace removed; all three inventories restored. No snapshot operation, local equivalence, complete member or full65 qualification claim."
+    },
+    {
+      "evidencePath": ".temp/p23-full64/package-r21-main-8ee3-current-preparation/current-custom-resource-differential-preparation/root-terminal-review.json",
+      "evidenceSha256": "6d973ce18a12c68e8c6bdffb083e11ee4ca911e4c701816e824718f817d8fa76",
+      "scope": "2026-10-21 UTC: five serial custom-input observations. Accepted {vcpu:1,memoryMib:3072,diskMb:4000} controls bracket three controlled readiness Errors: local {vcpu:0.03125,memoryMib:128,diskMb:1000}, CPU-only {vcpu:0.03125,memoryMib:3072,diskMb:4000}, memory-only {vcpu:1,memoryMib:128,diskMb:4000}. All container destruction and exact Worker/application/namespace retirement succeed; original inventories restored. This is a finite input difference, not proof of the specific predicate, numeric minima, allocation, all-values equivalence or full65 qualification."
     }
   ],
   "sourceConflicts": [
