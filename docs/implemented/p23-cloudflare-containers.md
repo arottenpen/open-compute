@@ -107,10 +107,16 @@ P23 两项真实产品用例均通过，耗时 430.00 秒。
 两目标复验满足独立的固定空间门槛，门槛高于文档要求的 44 GiB。
 复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/local-macos-two-preparation-repairs-v3/root-terminal-and-full-diagnostics-review.json`。
 本地分批验证不替代正式 tag 工作流资格；正式发行报告仍待完成。
-当前 CI 的 S3 测试失败；只读复核确认测试 bucket 不存在，返回 HTTP 404。
-当前 CI 另有一项旧平台矩阵文本断言失败。
+前一 CI 的 S3 测试失败；当时测试 bucket 不存在，返回 HTTP 404。
+前一 CI 另有一项旧平台矩阵文本断言失败。
 本地修复保留正式发行的三个平台；100 项夹具工具测试均通过。
-修复已形成独立本地提交，尚未推送 main。
+2026-10-21（UTC），私有测试 bucket 已恢复为 Standard，公开访问关闭。
+其他 bucket 和凭据未变；本批没有恢复历史对象。
+通过本地真实用例后，修复已一次性快进推送 main。
+main revision 为 `b3b78bdd05337a6399d9d826ed804fa960a96909`。
+[本次 main CI](https://github.com/elliothux/open-compute/actions/runs/39534275671)已通过。
+九个 job 成功，三个条件 job 按路径跳过。
+本轮 CI 不替代 coverage、完整 workspace Gate 或正式 tag 资格。
 当前包的证据清单为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-release-evidence-inventory.json`。
 这些包检查不替代全部 65 个成员的兼容资格，也不证明发行流程已经通过。
 
@@ -128,6 +134,21 @@ macOS ARM64 使用正式 R21 和独立的 4 GiB、2 CPU Engine，原 ordinary �
 本批未执行新的完整 workspace Gate，也未提升 65 个成员的资格。
 当前单例复核为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/local-macos-omitted-snapshot-owner-v5/root-terminal-success-review.json`。
 助手断言复核为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/current-snapshot-authoritative-archive-test-repair/root-helper-preservation-and-source-review.json`。
+
+2026-10-21（UTC），五个串行托管动作取得八个稳定成员的有限观测。
+HTTP 指定主机规则和兜底规则均返回预期字节，HTTP 与 socket 关闭均已确认。
+预先取消的 exec 抛出 `AbortError`；实际 READY 后取消的 exec 以 137 退出。
+取消后的 stdout、stderr 均到达 EOF，主容器仍可执行下一条命令。
+实际 READY 后调用 `kill(9)` 的 exec 也以 137 退出，两条输出流均到达 EOF。
+`lite` 和 custom 两种启动均通过真实 readiness、running、image 和 label 核对。
+custom 输入为 `vcpu:1`、`memoryMib:3072` 和 `diskMb:4000`。
+本批没有测量实际分配量，也不证明其他数值、边界或完整成员语义。
+每次动作均销毁容器后再执行下一次动作；同时运行的容器最多一个。
+临时 Worker、Container 应用和命名空间均已删除，三份资源清单与执行前相同。
+临时 secret 仅经内存管道传入；本批没有创建 secret 文件或调用快照 API。
+托管记录现为 56 项正向子集、3 项负向子集、6 项未实测。
+九个目录成员仍缺稳定生产入口和正向恢复证据；全部 65 个成员的资格未提升。
+复核记录为 `.temp/p23-full64/package-r21-main-8ee3-current-preparation/authorized-external-execution-20261021/hosted-root-terminal-review.json`。
 
 以下段落保留各批次的历史输入和结果。
 
