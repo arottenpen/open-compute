@@ -1,6 +1,6 @@
 # P23：Cloudflare Containers 基础实现
 
-状态：**implemented，本地完整 coverage 与最终 Gate 用例通过，三宿主发行包待验收**（2026-10-23，UTC）。
+状态：**implemented，发版前验收通过；正式 tag 工作流与公开发布未执行**（2026-10-23，UTC）。
 本页保留各批次的原始范围和结果；成员清单声明不替代发行验收。
 以下基础验收段落保留 R9 历史结果；当前 R22 状态见下文 2026-10-23 记录。
 正式 R9 的 exact3 已 verified；workspace coverage 已按生产字节等价复用证据。
@@ -32,7 +32,37 @@ P23 三项真实产品用例全部通过，零忽略，耗时 600.44 秒。
 最终 Gate 报告为 `.temp/gate-run/20261023T175731-7f3ea228/report.json`。
 报告的 SHA-256 为 `38d4cdb63d0a76baa3721e3b9362472984651f89d3c6174fcbed73d215951fd9`。
 补充复核位于下文证据目录内的 `canonical-coverage-seven-gib-compiler/workspace-final-current-preparation/final-execution/retained-dependency-failure-readonly/root-canonical-and-completion-review.json`。
-当前 R22 的三宿主发行包、安装和发行工作流资格仍待完成。
+同一候选的三平台包和十项安装验收已通过。
+原 x64 压力恢复测试已成功结束；正式 tag 工作流尚未执行。
+
+候选源码为 `d37501b87aa997bffea8e6be767b78441f1d81b1`。
+Darwin ARM64、Linux ARM64 和 Linux x64 均通过原四项单文件用例。
+ARM64 Dashboard 的原运行器成功退出。
+运行器要求两项用例、进程回收和资源后置检查全部通过。
+原始子进程报告已丢失；命令历史保留原退出码和摘要一致的运行器源码。
+上述回读不重建原文件身份，也没有重跑用例。
+
+macOS、Ubuntu 24 和 Debian 13 的 user／system 安装矩阵为 10／10 通过。
+四项 ARM64 安装范围取得 630 次资源采样，全部为 4 GiB、2 核 CPU。
+原安装器验证首装、服务生命周期、KV／Worker 数据保留和预期升级拒绝。
+本轮测试容器均已回收，输入、Engine 库存和资源配置保持不变。
+
+证据为 `.temp/p23-release-current-recovery/root-ten-scope-installation-review.json`、
+`root-current-three-binary-and-installation-review.json` 和
+`root-historical-package-dashboard-readback-review.json`。
+[macOS 候选资格](https://github.com/elliothux/open-compute/actions/runs/39953290637)与
+[x64 候选资格](https://github.com/elliothux/open-compute/actions/runs/39955711933)绑定同一源码。
+这些候选结果不替代正式 tag 工作流，也不证明公开发布已完成。
+
+x64 压力测试在 2 CPU、4 GiB 下完成五档检查。
+`smoke`、`p0-2c4g`、`scenario`、`p1-2c4g-peak` 和 `p1-2c4g-soak` 均通过。
+完整强度档保持 scale 为 1，全部 stack 的原错误率和延迟门槛均通过。
+测量共记录 1228944 个请求样本及 683 个错误；结果不代表零错误。
+报告中的全局异常为零。
+一小时恢复档实际完成 3632 秒，并完成三次注入重启后的恢复核对。
+原报告绑定上述候选源码和 x64 包摘要，没有重跑压力测试。
+报告归档的 SHA-256 为 `1f368751c14d6b113944c9cf6f1a85c3a757e5eb5b741f312dbebc724a870681`。
+指标复核为 `.temp/p23-release-current-recovery/original-stress-terminal/root-terminal-stress-review.json`。
 
 R22 正式输入下，完整 coverage 批次通过。
 本批次执行 63 个目标，2087 项通过，零失败。
