@@ -115,18 +115,11 @@ Write standard module workers (`export default { fetch }`) with the bindings you
 
 ### Partial
 
-| Module      | Status                                                                                                                                           |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Workers AI  | ██░░░░░░░░ 20% — Markdown Conversion and AI Search only                                                                                          |
-| Browser Run | CDP and managed browser, Quick Actions, DevTools, Live View and Custom AI; [operator guide](docs/references/runbooks/install-and-first-start.md) |
-
-### Planning
-
-Design is underway; bindings and APIs are not available to deploy yet.
-
-| Module     | Status                     |
-| ---------- | -------------------------- |
-| Containers | ██░░░░░░░░ 20% — Planning. |
+| Module      | Status                                                                                                                                                    |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workers AI  | ██░░░░░░░░ 20% — Markdown Conversion and AI Search only                                                                                                   |
+| Browser Run | CDP and managed browser, Quick Actions, DevTools, Live View and Custom AI; [operator guide](docs/references/runbooks/install-and-first-start.md)          |
+| Containers  | The platform implements the fixed 65-member API and directory restore. [Release checks](docs/implemented/p23-cloudflare-containers.md) remain incomplete. |
 
 ### Not yet
 
