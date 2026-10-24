@@ -62,6 +62,8 @@ def run(images, binary, root, evidence, command):
     root.mkdir(mode=0o700)
     evidence.mkdir(mode=0o700, parents=True)
     home = root / 'colima'
+    # Colima ignores COLIMA_HOME unless that directory already exists.
+    home.mkdir(mode=0o700)
     docker_config = root / 'docker-config'
     docker_config.mkdir(mode=0o700)
     environment = dict(os.environ, COLIMA_HOME=str(home), DOCKER_CONFIG=str(docker_config))

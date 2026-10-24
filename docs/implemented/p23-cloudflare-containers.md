@@ -9,6 +9,22 @@ Darwin Q10 原四项 package 用例 4/4 PASS；测试进程已回收。
 两组 ACL 已恢复；临时账号、home 和 staging 已删除，账号进程为零。
 基础验收时的 capability inventory 包含 64 个稳定 Container 成员，成员资格均为 `blocked`。
 
+## 2026-10-24 正式发布环境修复
+
+正式工作流 [40047706451](https://github.com/elliothux/open-compute/actions/runs/40047706451) 的 macOS workspace 与 coverage 任务均在环境前置阶段失败。
+两份原始报告均为 `mainExecuted = false`，错误为 `COLIMA_ENGINE_SOCKET_REQUIRED`；主 Gate 与 coverage 均未启动。
+固定 Colima 0.10.3 仅在 `COLIMA_HOME` 目录已存在时采用该路径。
+启动器未创建目录，导致 Colima 使用默认目录，而守卫检查原定私有目录中的 socket。
+
+修复在首次调用 Colima 前创建 mode `0700` 的私有目录。
+原回归先得到 3 项失败与 3 项错误；修复后 9 项全部通过。
+5 项调用方检查与 24 项发布契约检查通过。
+固定 ARM64 与 x86_64 Colima 的真实本地命令均选中私有目录，宿主原有目录身份不变。
+x86_64 命令使用已安装的 Rosetta；本地探针未创建虚拟机、Engine 或执行 Gate。
+资源上限、原断言、退出清理、Container 执行源码与 R22 pin 均未改变。
+旧失败日志和报告原样保留；正式版本与 Draft 均未创建。
+修复提交仍需通过 main 检查与修订 tag 的正式资格，不能用本地探针替代。
+
 ## 2026-10-24 产品展示面更新
 
 本批同步双语 Container 指南、README、架构图、实例配置、CLI 与内嵌运维入口。
