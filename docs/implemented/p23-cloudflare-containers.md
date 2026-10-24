@@ -9,6 +9,20 @@ Darwin Q10 原四项 package 用例 4/4 PASS；测试进程已回收。
 两组 ACL 已恢复；临时账号、home 和 staging 已删除，账号进程为零。
 基础验收时的 capability inventory 包含 64 个稳定 Container 成员，成员资格均为 `blocked`。
 
+## 2026-10-24 正式 tag 宿主断言
+
+正式工作流 [40072654539](https://github.com/elliothux/open-compute/actions/runs/40072654539) 已进入最终 workspace Gate。
+本轮 Broker 资格通过，主 Gate 成功启动。
+service 库测试为 991 项通过、2 项失败、零忽略。
+两项升级默认值测试把 macOS Intel 当作正式安装目标，并直接解包成功结果。
+生产代码按既定平台清单返回 `RELEASE_UNSUPPORTED`；项目不发布 Darwin Intel 二进制。
+
+修复仅让两项测试在 macOS Intel 上断言拒绝结果。
+三个正式平台保留原有成功断言；生产代码、R22 pin 与资源限制均未改变。
+修复后的本地 Darwin ARM64 构建及两项定向测试通过，零失败、零忽略。
+本地 ARM64 结果不证明 Intel 拒绝分支的新测试已经执行。
+原始 tag Gate 失败记录保留；修复后的正式资格与公开发布仍未完成。
+
 ## 2026-10-24 Intel Broker 单项诊断
 
 单项诊断 [40064512629](https://github.com/elliothux/open-compute/actions/runs/40064512629) 捕获了资源探针超时过程。
