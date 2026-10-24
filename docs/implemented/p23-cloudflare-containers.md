@@ -1,6 +1,6 @@
 # P23：Cloudflare Containers 基础实现
 
-状态：**implemented，发版前验收通过；正式 tag 工作流与公开发布未执行**（2026-10-23，UTC）。
+状态：**implemented，本地发版前验收完成；正式 tag 资格失败，公开发布未完成**（2026-10-24，UTC）。
 本页保留各批次的原始范围和结果；成员清单声明不替代发行验收。
 以下基础验收段落保留 R9 历史结果；当前 R22 状态见下文 2026-10-23 记录。
 正式 R9 的 exact3 已 verified；workspace coverage 已按生产字节等价复用证据。
@@ -8,6 +8,36 @@
 Darwin Q10 原四项 package 用例 4/4 PASS；测试进程已回收。
 两组 ACL 已恢复；临时账号、home 和 staging 已删除，账号进程为零。
 基础验收时的 capability inventory 包含 64 个稳定 Container 成员，成员资格均为 `blocked`。
+
+## 2026-10-24 Intel Broker 单项诊断
+
+修订后的正式工作流 [40054104614](https://github.com/elliothux/open-compute/actions/runs/40054104614) 绑定提交 `c89b6766991e7f7e1d494f7309c796cd4d6a19c8`。
+三平台打包与十项安装验收通过。
+两个 Intel macOS 任务均通过 Engine、XFS 与 helper 准备，但 Broker 启动资格失败。
+两份报告仍为 `mainExecuted = false`，Broker 输出为 `CONFIG_INVALID`。
+coverage 与最终 workspace Gate 均未启动；具体拒绝条件尚未捕获。
+剩余压力任务已取消，原始失败和成功结果分别保留。
+
+本地 ARM64 探针使用 Colima 0.10.3、Lima 2.2.0 与 Docker 29.5.2。
+VM 保持 2 CPU、4 GiB 内存、8 GiB 系统盘及 16 GiB 数据盘。
+真实 Broker 资格、快照能力握手和退出清理通过。
+探针使用 `d37501b87aa997bffea8e6be767b78441f1d81b1` 的 Darwin ARM64 包。
+当前 Broker Rust 源码与该候选相同；当前 tag 的二进制身份仍由正式打包任务验证。
+原有 Docker、Lima 与 Colima 目录身份保持不变，探针的 VM 和子进程均已回收。
+本地探针未执行产品 Gate，也不证明 Intel CI 资格。
+
+CI 诊断记录仅包含事件时间、动作类别、镜像角色和退出码。
+子进程的事件文件上限为 1 MiB，不记录命令、容器 ID、名称或标签。
+诊断另记录 socket 对端 UID／GID，以及已过滤的转发计数；原 Rust 身份检查继续执行。
+真实 exec canary 检查取得 25 条事件，共 2190 字节；事件文件没有 canary。
+本地文件上限回归确认子进程受限，父进程的上限不变。
+单项 Intel 诊断入口只运行 Broker 资格和清理，不运行产品 Gate、coverage 或发布。
+该入口用于取得缺失的拒绝证据，不能替代正式资格。
+
+报告组装器原来读取旧 macOS 目录名，与 Intel 工作流上传名称不一致。
+新增回归先复现目录缺失；修复后 35 项发布工具检查通过。
+Container 执行源码、R22 pin、原用例断言和资源上限均未改变。
+当前版本尚未创建 GitHub Release 或 Draft，也未执行 npm 发布。
 
 ## 2026-10-24 正式发布环境修复
 
@@ -1502,7 +1532,8 @@ const worker = defineWorker({
 export default defineConfig({ worker, containers: [apiContainer] });
 ```
 
-此例展示固定 `cf/config` 的声明关系，不扩展基础 13 family 验收范围。完整 64 个稳定成员仍保持 `blocked`。
+此例保留 CT0 当时固定 `cf/config` 的声明关系，范围为基础 13 family。
+当时的完整 64 个稳定成员均为 `blocked`；当前成员范围与结果见本页的 R22 记录。
 mode 求值、DO export lifecycle 与 Build Output
 由 cf 和官方构建链拥有；`ocd` 验证实际上传合同，不读取 TypeScript 项目文件或沿用旧 migrations/tag 配置。
 

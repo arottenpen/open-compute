@@ -99,7 +99,8 @@ Broker 入口载入两个已验证的 bootstrap archive，安装 helper，再核
 命令结束后，入口回收本轮 helper、Broker 和 Colima profile；失败仍保留宿主报告。
 准备入口的成功只证明准备链，不替代命令自身的 coverage 或最终 Gate 结果。
 当前 P23 验收范围包含完整 stable Container API 与 snapshot capture/restore。
-固定 types 的清单包含 65 个成员；成员资格仍为 `blocked`，见 [Containers 运维](containers.md)。
+固定 types 的清单包含 65 个成员；当前实现范围见 [Containers 运维](containers.md)。
+正式发行资格要求当前 tag 的 coverage、最终 Gate 和三平台包报告全部通过。
 P23 产品场景包含跨对象快照恢复、重启后恢复，以及 exec PID、晚输出、helper 意外退出和无 shell 回归。
 PTY 场景用 stdin 与 `SIGWINCH` 握手，核对 resize 前后的尺寸、合并后的 stderr 和真实退出码。
 命名镜像场景核对两个镜像、独立 getter 副本、省略规格时的 Lite，以及自定义 CPU 限额。
