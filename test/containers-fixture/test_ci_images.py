@@ -122,6 +122,5 @@ class ImageWorkflowTests(unittest.TestCase):
         self.assertIn('shasum -a 256 --check', engine)
         self.assertNotIn('colima start', engine)
 
-
 if __name__ == '__main__':
     unittest.main()
