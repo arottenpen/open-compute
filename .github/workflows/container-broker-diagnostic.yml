@@ -38,12 +38,11 @@ jobs:
           mbx build --locked -p open-compute-service --bin ocd
       - name: Observe only Broker qualification and owned cleanup
         run: |
-          python3 -I -B test/containers-fixture/with-ci-macos-engine.py \
+          python3 -I -B test/containers-fixture/diagnose-ci-resources.py \
             --images '${{ steps.images.outputs.directory }}' \
             --binary "$PWD/target/debug/ocd" \
             --root /private/tmp/oc-ci-diagnostic \
-            --evidence "$PWD/.temp/containers-ci-engine" \
-            --command python3 -I -B -c 'print("Broker qualification only; no product Gate")'
+            --evidence "$PWD/.temp/containers-ci-engine"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
