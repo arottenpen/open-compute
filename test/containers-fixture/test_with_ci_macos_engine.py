@@ -30,6 +30,8 @@ class MacEngine(unittest.TestCase):
             self.calls.append(args)
             env = kwargs['env']
             self.assertEqual(env['COLIMA_HOME'], str(self.root / 'colima'))
+            self.assertTrue(Path(env['COLIMA_HOME']).is_dir())
+            self.assertEqual(Path(env['COLIMA_HOME']).stat().st_mode & 0o777, 0o700)
             self.assertEqual(env['DOCKER_CONFIG'], str(self.root / 'docker-config'))
             self.assertNotIn('LIMA_HOME', env)
             stage = args[3] if '--profile' in args else 'version'
