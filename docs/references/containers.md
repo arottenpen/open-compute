@@ -3,7 +3,10 @@
 Containers 使用独立的 operator-owned Docker Broker。`ocd` 保存镜像、application target 和 execution lease；
 Broker 执行受限的 Docker 操作。`ocd` 不启动 Docker 或 Broker，不在启动或请求路径构建、拉取镜像。
 
-当前 [P23](../implemented/p23-cloudflare-containers.md) 已接入基础 13 个 Docker operation family；产品验收状态由结果页记录。
+当前 [P23](../implemented/p23-cloudflare-containers.md) 已实现固定 65 项 API、完整快照与目录恢复。
+2026-10-23（UTC），R22 输入通过三项真实产品用例、coverage 与最终 Gate 子进程，以及三宿主候选包检查。
+最终 Gate 外层守卫失败与独立摘要补证分别保留；正式 tag 工作流与公开发布尚未执行。
+以下按日期保留的记录不覆盖本段当前状态；完整原始证据与限制由 P23 结果页记录。
 当前全量验收目标包含 snapshot capture、snapshot restore 和 `setInactivityTimeout()`。
 2026-10-20（UTC），R21 输入下的 Linux ARM64 coverage 和最终 Gate 已通过。
 同日，macOS ARM64 的当前 P23 两项真实产品用例均通过。
@@ -520,7 +523,7 @@ exec 的退出码应来自目标进程；helper 意外退出不能证明目标�
 `exitCode` 应在目标进程退出后完成；`output()` 应等待输出流结束。
 新增 helper 的源码、正式 runtime pin、Provider 资格和产品回归须使用同一组输入。
 R21 当前输入已完成 helper、Provider 资格与 P23 真实产品回归。
-完整 stable API 的成员资格仍未通过；当前输入和原始报告见 [P23 结果](../implemented/p23-cloudflare-containers.md)。
+该轮尚未完成 stable API 成员验收；当时输入和原始报告见 [P23 结果](../implemented/p23-cloudflare-containers.md)。
 
 2026-10-12，维护中的 P23 场景新增独立对象的 exec 生命周期回归。
 回归核对真实子进程 PID，并在子进程退出后才释放后代进程的输出屏障。
@@ -589,7 +592,7 @@ DO 重建后，旧 timeout 配置失效；构造函数可重新设置 timeout。
 未设置 timeout 时，本地候选采用现有 Actor 的 10 秒空闲间隔，不声明 CF 的默认时长等于 10 秒。
 timer 到期后，原生控制事件先登记 stop intent，再等待 Broker 的正向清理证明。
 未知停止结果仍占用容量。
-原生专项回归已通过；正式 pin 和完整产品验收尚未通过。
+该轮原生专项回归已通过；当时尚未完成正式 pin 和完整产品验收。
 
 2026-10-12，托管探针分别设置 1 秒和 120 秒 timeout。
 客户端连续 90.001 秒不向 Worker 发请求，也不调用 `ctx.abort()`。
@@ -642,3 +645,13 @@ rolling rollout 请求在 `steps` 与 `step_percentage` 中选一项，同时提
 
 应用容器可以访问宿主允许的 IP 网络。单机部署不承诺阻止 provider 网络直连容器，也不承诺每个容器独立 VM。
 平台控制 API、原生回调和 engine socket 仍各自验证权限；出站 IP capability 继续拒绝宿主 Unix socket。
+
+## 公开管理面与 SDK
+
+Container 管理路由由 `openapi/cloudflare-subset-manifest.json` 的 `clientObservedOperations` 登记。
+生成器将固定 cf 使用的 13 条路由投影到 `ocd capabilities --json`，并标注 `OC-CONTAINERS-MGMT-001`。
+路由包含 application、账号上限、镜像准备、registry credential、rollout 与实例观察。
+这些观察路由不属于固定上游 OpenAPI 子集；不能据此声称完整 Cloudflare 管理面兼容。
+固定 `cloudflare@7.2.0` SDK 没有对应方法，生成的 facade 不提供 Container 管理方法。
+`packages/sdk/surface.json` 登记排除项；应用使用固定 cf 部署流程。
+Dashboard 尚无独立的 Container 管理页。65 项 tenant runtime API 与上述管理面分别验收。
