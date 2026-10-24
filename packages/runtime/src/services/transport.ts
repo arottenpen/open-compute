@@ -27,6 +27,7 @@ import {
 } from "../sockets/tunnel.js";
 import {
   activateCapabilities,
+  holdServiceWebSocketHandoff,
   retainServiceCapability,
   retryServiceControl,
   ServiceCompletionReporter,
@@ -36,8 +37,8 @@ import {
   type ServiceRetentionController,
 } from "./control.js";
 import { serviceDeadline, serviceDeadlineAt } from "./deadline.js";
-import { appendServiceWebSocketHandoff } from "./facade.js";
 import type { ServiceFrame } from "./scope.js";
+import { appendServiceWebSocketHandoff } from "./websocket-handoff.js";
 
 interface ServiceAdmission {
   handle: string;
@@ -424,6 +425,7 @@ async function loadedServiceTarget(
         moduleBindings: [],
         workerLoaders: [],
         browserBindings: [],
+        containerClasses: [],
         env: {},
         bindings: [],
         scheduledTargets: [],
@@ -466,6 +468,7 @@ async function loadedServiceTarget(
       moduleBindings: [],
       workerLoaders: [],
       browserBindings: [],
+      containerClasses: [],
       env: {},
       bindings: [],
       scheduledTargets: [],
@@ -1049,6 +1052,13 @@ export class ServiceTransport extends WorkerEntrypoint<
       () => null,
       deadlineAt,
     );
+  }
+
+  /** Private channel owner; the issued policy never exposes this method. */
+  holdWebSocketHandoff(
+    handles: readonly string[],
+  ): Promise<ReadableStream<Uint8Array>> {
+    return holdServiceWebSocketHandoff(this.env, handles);
   }
 
   async completeRoot(scopeId: string): Promise<void> {

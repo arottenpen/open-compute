@@ -43,6 +43,90 @@ class GateTests(unittest.TestCase):
         self.assertIn(name, workspace)
         self.assertEqual(workspace[name].name, 'p21_python_main')
 
+    def test_containers_owns_one_exclusive_ordinary_sdk_native_scenario(self):
+        name = 'p23-containers'
+        case = 'ordinary_sdk_native_execution_code_deploy_rollout_and_restart_use_real_containers'
+        self.assertEqual(gate.CARGO_TARGETS[name], ('open-compute-service', 'p23_containers', True))
+        self.assertEqual(gate.TIMING[name], (case,))
+        self.assertEqual(gate.ONCE[name], (
+            'exec_options_probe::native_exec_streams_and_code_updates_preserve_owned_processes',
+            'snapshots::snapshot_rootfs_excludes_helper_entities_and_hardlink_references',
+        ))
+        self.assertEqual(gate.GROUPS['all'].count(name), 1)
+
+    def test_containers_input_identity_freezes_actual_oci_contract_and_worker_modules(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / 'manifest.json'
+            manifest.write_text('{}')
+            blob = root / 'blob'
+            blob.write_bytes(b'prepared layer')
+            bundle = root / 'test/applications/containers/.cloudflare/output/v0/workers/default/bundle'
+            bundle.mkdir(parents=True)
+            module = bundle / 'index.js'
+            module.write_text('export default {}')
+            (bundle / '.vite').mkdir()
+            (bundle / '.vite/manifest.json').write_text('{}')
+            worker_config = bundle.parent / 'worker.config.json'
+            worker_config.write_text('{}')
+            container_config = bundle.parents[2] / 'containers/fixture/container.config.json'
+            container_config.parent.mkdir(parents=True)
+            container_config.write_text('{}')
+            config = root / 'input.json'
+            value = {'containers': {'broker_socket': '/tmp/p23.sock', 'provider_contract_sha256': 'a'*64,
+                                    'max_instances': 2, 'max_snapshots': 32,
+                                    'max_snapshot_bytes': 8 << 30, 'resources': {}},
+                     'images': [{'manifest': str(manifest), 'blobs': [{'path': str(blob), 'sha256': gate.digest(blob)}]}]*2}
+            config.write_text(json.dumps(value))
+            with patch.object(gate, 'ROOT', root), patch.dict(os.environ, OPEN_COMPUTE_TEST_CONTAINERS_INPUT=str(config)):
+                original = gate.container_inputs_identity()
+                self.assertEqual(original['provider_contract_sha256'], 'a'*64)
+                self.assertEqual(len(original['oci_files']), 4)
+                self.assertEqual(len(original['worker_modules']), 1)
+                self.assertEqual(len(original['build_configurations']), 2)
+                for metadata in (worker_config, container_config):
+                    metadata.write_text('{"changed":true}')
+                    self.assertNotEqual(gate.container_inputs_identity(), original)
+                    metadata.write_text('{}')
+                worker_config.unlink()
+                with self.assertRaisesRegex(ValueError, 'configuration.*regular file'):
+                    gate.container_inputs_identity()
+                worker_config.write_text('{}')
+                for field, invalid in (
+                    ('max_snapshots', 0), ('max_snapshots', 100_001),
+                    ('max_snapshots', True), ('max_snapshots', '32'),
+                    ('max_snapshot_bytes', 0), ('max_snapshot_bytes', 1 << 63),
+                    ('max_snapshot_bytes', False), ('max_snapshot_bytes', 1.5),
+                ):
+                    previous = value['containers'][field]
+                    value['containers'][field] = invalid
+                    config.write_text(json.dumps(value))
+                    with self.subTest(field=field, invalid=invalid), \
+                         self.assertRaisesRegex(ValueError, 'retention limits'):
+                        gate.container_inputs_identity()
+                    value['containers'][field] = previous
+                config.write_text(json.dumps(value))
+                module.write_text('export default {changed: true}')
+                self.assertNotEqual(gate.container_inputs_identity(), original)
+                value['containers']['provider_contract_sha256'] = 'b'*64
+                config.write_text(json.dumps(value))
+                self.assertNotEqual(gate.container_inputs_identity(), original)
+                blob.write_bytes(b'corrupted')
+                with self.assertRaisesRegex(ValueError, 'digest mismatch'):
+                    gate.container_inputs_identity()
+                value['images'][0]['blobs'][0]['sha256'] = gate.digest(blob)
+                config.write_text(json.dumps(value))
+                self.assertNotEqual(gate.container_inputs_identity(), original)
+                manifest.unlink()
+                with self.assertRaisesRegex(ValueError, 'regular file'):
+                    gate.container_inputs_identity()
+                config.write_text('{}')
+                with self.assertRaisesRegex(ValueError, 'closed schema'):
+                    gate.container_inputs_identity()
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaisesRegex(ValueError, 'requires OPEN_COMPUTE_TEST_CONTAINERS_INPUT'):
+                    gate.container_inputs_identity()
+
     @staticmethod
     def targets(names):
         return {name: gate.Target('package', gate.TARGETS[name][1], 'test', str(gate.ROOT),
@@ -547,9 +631,11 @@ class GateTests(unittest.TestCase):
              patch.object(gate, 'ROOT', Path(temp)):
             parent = Path(temp) / ('long-report-name-' * 8)
             parent.mkdir()
+            temporary_paths = []
             target = self.targets(['p0-2'])['p0-2']
             def execute(command, **kwargs):
                 scratch = Path(kwargs['env']['TMPDIR'])
+                temporary_paths.append(scratch)
                 with tempfile.TemporaryDirectory(dir=scratch) as nested, \
                      socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                     listener.bind(str(Path(nested)/'socket'))
@@ -557,7 +643,7 @@ class GateTests(unittest.TestCase):
             with patch.object(gate.subprocess, 'run', side_effect=execute):
                 result = gate.execute_target('p0-2', '/compiled/test', parent/'pass', target)
             self.assertEqual(result['exit_code'], 0)
-            self.assertEqual(list((Path(temp)/'.temp/gate-tmp').iterdir()), [])
+            self.assertFalse(temporary_paths[0].exists())
             def leak(command, **kwargs):
                 (Path(kwargs['env']['TMPDIR'])/'evidence').write_text('preserve')
                 return SimpleNamespace(returncode=0)
@@ -565,6 +651,44 @@ class GateTests(unittest.TestCase):
                 result = gate.execute_target('p0-2', '/compiled/test', parent/'leak', target)
             self.assertEqual(result['exit_code'], 1)
             self.assertEqual((parent/'leak/tmp/evidence').read_text(), 'preserve')
+
+    def test_target_temp_uses_configured_filesystem_and_retains_cross_device_evidence(self):
+        with tempfile.TemporaryDirectory(dir='/tmp') as temp:
+            root = Path(temp).resolve()
+            local = root / 'local-data'
+            local.mkdir()
+            repository = root / 'shared-source'
+            repository.mkdir()
+            target = self.targets(['p0-2'])['p0-2']
+            captured = {}
+            def execute(command, **kwargs):
+                scratch = Path(kwargs['env']['TMPDIR'])
+                self.assertEqual(scratch.parent, local)
+                self.assertEqual(kwargs['env']['TMP'], str(scratch))
+                self.assertEqual(kwargs['env']['TEMP'], str(scratch))
+                evidence = scratch / 'evidence'
+                evidence.write_bytes(b'retained fixture bytes')
+                evidence.chmod(0o600)
+                captured['stat'] = evidence.stat()
+                (scratch / 'link').symlink_to('evidence')
+                return SimpleNamespace(returncode=1)
+            with patch.object(gate, 'ROOT', repository), \
+                 patch.object(gate.tempfile, 'tempdir', str(local)), \
+                 patch.object(gate.subprocess, 'run', side_effect=execute), \
+                 patch.object(gate.os, 'rename', side_effect=OSError(18, 'cross-device link')):
+                result = gate.execute_target('p0-2', '/compiled/test', root/'failure', target)
+            self.assertEqual(result['exit_code'], 1)
+            retained = root / 'failure/tmp'
+            self.assertEqual((retained/'evidence').read_bytes(), b'retained fixture bytes')
+            self.assertEqual((retained/'evidence').stat().st_mode & 0o777, 0o600)
+            self.assertEqual((retained/'link').readlink(), Path('evidence'))
+            original = Path(result['retained_temporary'])
+            self.assertEqual(original.parent, local)
+            self.assertEqual((original/'evidence').read_bytes(), b'retained fixture bytes')
+            for field in ('st_dev', 'st_ino', 'st_uid', 'st_gid', 'st_mode', 'st_nlink',
+                          'st_size', 'st_mtime_ns', 'st_ctime_ns'):
+                self.assertEqual(getattr((original/'evidence').stat(), field),
+                                 getattr(captured['stat'], field), field)
 
     def test_supervisor_relative_diagnostics_stay_in_the_run_directory(self):
         with tempfile.TemporaryDirectory() as temp, \
@@ -1200,6 +1324,134 @@ if '--list' not in sys.argv:
             contract = json.loads((root / 'contract-report.json').read_text())
             self.assertEqual(contract['cloudflareDifferential'], 'qualified')
             self.assertEqual(contract['platformVerdict'], 'go')
+
+
+class CompilePhaseTests(unittest.TestCase):
+    def exchange(self, response):
+        event_read, event_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        report = {'source_sha256': 'a' * 64, 'targets': ['unit']}
+        finished = threading.Event()
+        errors = []
+        def child():
+            try:
+                gate.compilation_phase_barrier(report)
+                finished.set()
+            except BaseException as error:
+                errors.append(error)
+        try:
+            with patch.dict(os.environ, {
+                'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': str(event_write),
+                'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': str(resume_read),
+            }):
+                worker = threading.Thread(target=child, daemon=True)
+                worker.start()
+                self.assertTrue(gate.select.select([event_read], [], [], 3)[0])
+                event = json.loads(os.read(event_read, 4096))
+                self.assertEqual(event, {
+                    'phase': 'compiled', 'source_sha256': 'a' * 64, 'targets': 1,
+                })
+                self.assertFalse(finished.is_set())
+                if response:
+                    os.write(resume_write, response)
+                os.close(resume_write)
+                resume_write = None
+                worker.join(3)
+                self.assertFalse(worker.is_alive())
+            return report, finished.is_set(), errors
+        finally:
+            for fd in (event_read, event_write, resume_read, resume_write):
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError as error:
+                        if error.errno != 9:
+                            raise
+
+    def test_no_control_pipes_preserve_default_execution(self):
+        with patch.dict(os.environ, {}, clear=True):
+            report = {}
+            self.assertIsNone(gate.compilation_phase_barrier(report))
+            self.assertEqual(report, {})
+
+    def test_matching_source_releases_the_case_boundary(self):
+        report, finished, errors = self.exchange(b'RUN ' + b'a' * 64 + b'\n')
+        self.assertTrue(finished)
+        self.assertEqual(errors, [])
+        self.assertTrue(report['compilation_handoff']['resumed'])
+
+    def test_other_source_or_eof_cannot_start_cases(self):
+        for response in (b'RUN ' + b'b' * 64 + b'\n', b''):
+            with self.subTest(response=response):
+                report, finished, errors = self.exchange(response)
+                self.assertFalse(finished)
+                self.assertEqual(len(errors), 1)
+                self.assertIsInstance(errors[0], RuntimeError)
+                self.assertFalse(report['compilation_handoff']['resumed'])
+
+    def test_oversized_response_is_rejected(self):
+        report, finished, errors = self.exchange(b'x' * 256)
+        self.assertFalse(finished)
+        self.assertIsInstance(errors[0], RuntimeError)
+        self.assertFalse(report['compilation_handoff']['resumed'])
+
+    def test_missing_resource_confirmation_expires_before_cases(self):
+        event_read, event_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        try:
+            with patch.dict(os.environ, {
+                'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': str(event_write),
+                'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': str(resume_read),
+            }), patch.object(gate.time, 'monotonic', side_effect=[0, 121]):
+                with self.assertRaises(TimeoutError):
+                    gate.compilation_phase_barrier({'source_sha256': 'a' * 64, 'targets': ['unit']})
+        finally:
+            os.close(event_read)
+            os.close(resume_write)
+
+    def test_partial_invalid_or_standard_descriptor_pair_is_rejected(self):
+        pairs = [
+            {'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': '5'},
+            {'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': '6'},
+            {'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': '1', 'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': '2'},
+            {'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': '5', 'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': '5'},
+            {'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': 'bad', 'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': '6'},
+        ]
+        for values in pairs:
+            with self.subTest(values=values), patch.dict(os.environ, values, clear=True):
+                with self.assertRaises((RuntimeError, ValueError)):
+                    gate.compilation_phase_barrier({'source_sha256': 'a' * 64, 'targets': ['unit']})
+        with tempfile.TemporaryFile() as file:
+            first, second = os.dup(file.fileno()), os.dup(file.fileno())
+            with patch.dict(os.environ, {
+                'OPEN_COMPUTE_GATE_BUILD_EVENT_FD': str(first),
+                'OPEN_COMPUTE_GATE_RUN_CONTINUE_FD': str(second),
+            }, clear=True):
+                with self.assertRaisesRegex(ValueError, 'pipe'):
+                    gate.compilation_phase_barrier({'source_sha256': 'a' * 64, 'targets': ['unit']})
+            file.seek(0)
+            self.assertEqual(file.read(), b'')
+
+    def test_rejected_handoff_prevents_even_case_inventory_processes(self):
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(gate, 'ROOT', Path(temp)), \
+             patch.object(gate, 'verify_inputs', return_value={}), \
+             patch.object(gate, 'validate_contract_case_mapping'), \
+             patch.object(gate, 'write_contract_report'), \
+             patch.object(gate, 'source_identity', return_value='a' * 64), \
+             patch.object(gate, 'resolve_targets', return_value=GateTests.targets(['p0-2'])), \
+             patch.object(gate, 'build_targets', return_value=({}, {})), \
+             patch.object(gate.platform, 'platform', return_value='test-host'), \
+             patch.object(gate.subprocess, 'check_output', return_value='revision'), \
+             patch.object(gate.sys, 'argv', ['gate.py', 'p0-2']), \
+             patch.dict(os.environ, OPEN_COMPUTE_GATE_ROUNDS='1'), \
+             patch.object(gate, 'compilation_phase_barrier', side_effect=RuntimeError('handoff rejected')), \
+             patch.object(gate, 'run_round') as run:
+            self.assertEqual(gate.main(), 1)
+            run.assert_not_called()
+            report = json.loads(next(Path(temp).rglob('report.json')).read_text())
+            self.assertEqual(report['test_processes_executed'], 0)
+            self.assertFalse(report['inventory_verified'])
 
 
 if __name__ == '__main__':

@@ -2,6 +2,8 @@
 """Build once; run every selected case once, then repeat only audited timing cases."""
 
 import argparse
+import errno
+import fcntl
 from collections import namedtuple
 import concurrent.futures
 from contextlib import nullcontext
@@ -13,7 +15,9 @@ from pathlib import Path
 import platform
 import re
 import resource
+import select
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -83,6 +87,7 @@ CARGO_TARGETS = {
     'p5-search': ('open-compute-service', 'p5_search_gate', True),
     'p6-cf-resources': ('open-compute-service', 'p6_cf_resource_gate', False),
     'p22-browser-run': ('open-compute-service', 'p22_browser_run', True),
+    'p23-containers': ('open-compute-service', 'p23_containers', True),
     'p6-cloudflare-sdk': ('open-compute-service', 'cloudflare_sdk_gate', False),
     'p20-cf-cli': ('open-compute-service', 'p20_cf_cli', False),
     # Python snapshots and several fresh daemon generations own one serial scenario.
@@ -492,18 +497,146 @@ def verify_inputs(*, probe_version=True):
     return result
 
 
+
+def container_inputs_identity():
+    """Freeze the explicit P23 OCI graphs, declared Broker contract and built Worker bytes."""
+    configured = os.environ.get('OPEN_COMPUTE_TEST_CONTAINERS_INPUT')
+    if not configured:
+        raise ValueError('p23-containers requires OPEN_COMPUTE_TEST_CONTAINERS_INPUT')
+    path = Path(configured)
+    if not path.is_absolute() or path.is_symlink() or not path.is_file() or path.stat().st_size > 65536:
+        raise ValueError('P23 input JSON must be an absolute bounded regular file')
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict) or set(value) != {'containers', 'images'}:
+        raise ValueError('P23 input JSON has an invalid closed schema')
+    provider = value['containers']
+    if not isinstance(provider, dict) or set(provider) != {
+            'broker_socket', 'provider_contract_sha256', 'max_instances',
+            'max_snapshots', 'max_snapshot_bytes', 'resources'}:
+        raise ValueError('P23 Broker configuration has an invalid closed schema')
+    if (type(provider['max_snapshots']) is not int
+            or not 1 <= provider['max_snapshots'] <= 100_000
+            or type(provider['max_snapshot_bytes']) is not int
+            or not 1 <= provider['max_snapshot_bytes'] <= (1 << 63) - 1):
+        raise ValueError('P23 snapshot retention limits are invalid')
+    contract = provider['provider_contract_sha256']
+    if not isinstance(contract, str) or not re.fullmatch('[0-9a-f]{64}', contract):
+        raise ValueError('P23 Broker contract digest is invalid')
+    images = value['images']
+    if not isinstance(images, list) or len(images) != 2:
+        raise ValueError('P23 requires exactly two prepared OCI graphs')
+    files = []
+    def record_file(name, maximum):
+        if not isinstance(name, str):
+            raise ValueError('P23 OCI paths must be strings')
+        file = Path(name)
+        if not file.is_absolute() or file.is_symlink() or not file.is_file() or file.stat().st_size > maximum:
+            raise ValueError('P23 OCI input must be an absolute bounded regular file')
+        sha = digest(file)
+        files.append({'sha256': sha, 'size': file.stat().st_size})
+        return sha
+    for image in images:
+        if not isinstance(image, dict) or set(image) != {'manifest', 'blobs'}:
+            raise ValueError('P23 OCI image has an invalid closed schema')
+        graph_start = len(files)
+        record_file(image['manifest'], 1 << 20)
+        blobs = image['blobs']
+        if not isinstance(blobs, list) or not 1 <= len(blobs) <= 129:
+            raise ValueError('P23 OCI blob inventory is invalid')
+        for blob in blobs:
+            if not isinstance(blob, dict) or set(blob) != {'path', 'sha256'}:
+                raise ValueError('P23 OCI blob has an invalid closed schema')
+            if record_file(blob['path'], 1 << 30) != blob['sha256']:
+                raise ValueError('P23 OCI blob digest mismatch')
+        if sum(file['size'] for file in files[graph_start:]) > 1 << 30:
+            raise ValueError('P23 OCI graph exceeds the explicit 1 GiB budget')
+    bundle = ROOT / 'test/applications/containers/.cloudflare/output/v0/workers/default/bundle'
+    if not (bundle / 'index.js').is_file():
+        raise ValueError('P23 ordinary SDK Worker must be explicitly built')
+    built = []
+    for file in sorted(bundle.rglob('*')):
+        if file.is_symlink():
+            raise ValueError('P23 Worker bundle may not contain symlinks')
+        if file.is_file() and file.suffix != '.map' and '.vite' not in file.relative_to(bundle).parts:
+            if file.suffix not in {'.js', '.wasm'} or file.stat().st_size > 16 << 20:
+                raise ValueError('P23 Worker bundle contains an invalid module')
+            built.append({'module': str(file.relative_to(bundle)), 'sha256': digest(file)})
+    output = bundle.parents[2]
+    configurations = [bundle.parent / 'worker.config.json',
+                      *sorted((output / 'containers').glob('*/container.config.json'))]
+    if len(configurations) < 2:
+        raise ValueError('P23 Build Output requires Worker and Container configuration')
+    metadata = []
+    for file in configurations:
+        if file.is_symlink() or not file.is_file() or file.stat().st_size > 1 << 20:
+            raise ValueError('P23 Build Output configuration must be a bounded regular file')
+        metadata.append({'path': str(file.relative_to(output)), 'sha256': digest(file)})
+    return {'input_sha256': digest(path), 'provider_contract_sha256': contract,
+            'oci_files': files, 'worker_modules': built, 'build_configurations': metadata}
+
+
 def verify_selected_inputs(targets, *, probe_version=True):
     """L0 typed checks need only frozen manifests; Cargo product Gates need runtime inputs."""
     if 'p0-1' in targets and not (shutil.which('/usr/sbin/lsof') or shutil.which('lsof')):
         raise ValueError('p0-1 requires lsof; install the process Gate tool before running')
     if (any(not isinstance(target, TypedTarget) for target in targets.values())
             or 'p5-ai-provider-qualification' in targets):
-        return verify_inputs(probe_version=probe_version)
+        result = verify_inputs(probe_version=probe_version)
+        if 'p23-containers' in targets:
+            result['containers'] = container_inputs_identity()
+        return result
     return {
         'baseline_sha256': digest(ROOT / 'test/conformance/baseline.json'),
         'catalog_sha256': digest(ROOT / 'test/conformance/catalog.json'),
         'capabilities_sha256': digest(ROOT / 'share/cloudflare-capabilities.json'),
     }
+
+
+def compilation_phase_barrier(report):
+    """Wait for the resource owner before any test process can start."""
+    event = os.environ.pop('OPEN_COMPUTE_GATE_BUILD_EVENT_FD', None)
+    resume = os.environ.pop('OPEN_COMPUTE_GATE_RUN_CONTINUE_FD', None)
+    if event is None and resume is None:
+        return
+    if (event is None or resume is None
+            or not re.fullmatch('[0-9]{1,10}', event)
+            or not re.fullmatch('[0-9]{1,10}', resume)):
+        raise ValueError('compilation handoff requires two pipe descriptors')
+    event_fd, resume_fd = int(event), int(resume)
+    if min(event_fd, resume_fd) < 3 or event_fd == resume_fd:
+        raise ValueError('compilation handoff requires distinct dedicated pipes')
+    try:
+        for fd, access in ((event_fd, os.O_WRONLY), (resume_fd, os.O_RDONLY)):
+            if (not stat.S_ISFIFO(os.fstat(fd).st_mode)
+                    or fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE != access):
+                raise ValueError('compilation handoff requires a writable and a readable pipe')
+        source = report['source_sha256']
+        if not re.fullmatch('[0-9a-f]{64}', source):
+            raise ValueError('compilation handoff requires the current source digest')
+        report['compilation_handoff'] = {'resumed': False, 'source_sha256': source}
+        message = json.dumps({'phase': 'compiled', 'source_sha256': source,
+                              'targets': len(report['targets'])}).encode() + b'\n'
+        if os.write(event_fd, message) != len(message):
+            raise RuntimeError('compilation handoff notification was incomplete')
+        expected = f'RUN {source}\n'.encode()
+        response = b''
+        deadline = time.monotonic() + 120
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([resume_fd], [], [], remaining)[0]:
+                raise TimeoutError('compilation handoff did not restore the test resource limits')
+            part = os.read(resume_fd, len(expected) + 1 - len(response))
+            if not part:
+                break
+            response += part
+            if len(response) > len(expected):
+                raise RuntimeError('compilation handoff response was too long')
+        if response != expected:
+            raise RuntimeError('compilation handoff did not authorize the current source')
+        report['compilation_handoff']['resumed'] = True
+    finally:
+        os.close(event_fd)
+        os.close(resume_fd)
 
 
 def build_targets(targets, directory, workspace):
@@ -615,9 +748,8 @@ def execute_target(name, executable, directory, target, *, list_only=False):
     cwd = str(directory.resolve()) if name == 'runtime' else target.cwd
     # Keep pathname-based Unix sockets below SUN_LEN even with long target labels.
     # Retained evidence is moved beside the log only after the process has exited.
-    temporary_root = ROOT / '.temp/gate-tmp'
-    temporary_root.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix='', dir=temporary_root)).resolve()
+    # Respect TMPDIR so local-storage tests do not inherit a shared repository filesystem.
+    temporary = Path(tempfile.mkdtemp(prefix='oc-gate-')).resolve()
     if isinstance(target, TypedTarget):
         env = {key: os.environ[key] for key in target.env_allowlist if key in os.environ}
         env.update(TMPDIR=str(temporary), TMP=str(temporary), TEMP=str(temporary))
@@ -631,6 +763,7 @@ def execute_target(name, executable, directory, target, *, list_only=False):
     # Repetition belongs only to this runner, including when a test spawns its own fixture.
     env.pop('OPEN_COMPUTE_GATE_ROUNDS', None)
     start = time.monotonic()
+    retained_temporary = None
     try:
         # JSON targets own stdout; compiler diagnostics must not become protocol data.
         with (directory / 'output.log').open('x') as output, \
@@ -656,12 +789,21 @@ def execute_target(name, executable, directory, target, *, list_only=False):
             destination = directory / 'tmp'
             if destination.exists() or destination.is_symlink():
                 raise RuntimeError(f'refusing to overwrite retained evidence: {destination}')
-            temporary.rename(destination)
+            try:
+                temporary.rename(destination)
+            except OSError as error:
+                if error.errno != errno.EXDEV:
+                    raise
+                # Keep original failure metadata on its filesystem; copy only for the report.
+                shutil.copytree(temporary, destination, symlinks=True)
+                retained_temporary = str(temporary)
         else:
             temporary.rmdir()
     result = {'target': name, 'exit_code': process.returncode,
               'seconds': time.monotonic() - start, 'log': str(directory / 'output.log'),
               'cwd': cwd}
+    if retained_temporary is not None:
+        result['retained_temporary'] = retained_temporary
     if process.returncode == 0 and leftovers:
         result['exit_code'] = 1
         result['error'] = 'test left temporary files behind; retained beside its output log'
@@ -929,6 +1071,7 @@ def main():
     cpu_start = resource.getrusage(resource.RUSAGE_CHILDREN)
     try:
         artifacts, report['build'] = build_targets(targets, directory, args.workspace)
+        compilation_phase_barrier(report)
         preparation_start = time.monotonic()
         prepared = run_round(
             {name: target._replace(exclusive=False) for name, target in targets.items()},

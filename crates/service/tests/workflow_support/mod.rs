@@ -160,17 +160,9 @@ pub(crate) struct Harness {
 
 impl Harness {
     pub(crate) async fn start() -> Self {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
-        let runs = root.join(".temp/workflow-run");
-        std::fs::create_dir_all(&runs).unwrap();
         let temp = tempfile::Builder::new()
             .prefix("workflow-")
-            .tempdir_in(runs)
+            .tempdir()
             .unwrap();
         let data = temp.path().join("data");
         let storage = Arc::new(
@@ -280,7 +272,7 @@ request_timeout_ms = 3000
             .with_cache(cache.clone());
             let auth = source_auth.clone();
             async move {
-                serve_runtime_source(source_listener, source, auth, async move {
+                serve_runtime_source(source_listener, source, auth, None, async move {
                     let _ = receiver.changed().await;
                 })
                 .await
