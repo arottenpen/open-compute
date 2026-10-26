@@ -6,6 +6,7 @@ use std::io::{Read as _, Seek as _, SeekFrom};
 
 const ROOT_MARKER: &str = "open-compute-snapshot-probe";
 const VOLATILE_MARKER: &str = "run/open-compute-snapshot-probe";
+const RESOURCE_PROBE_COMMAND: &str = "set -eu; if mv /.open-compute-exec /.open-compute-exec-moved; then exit 80; fi; if printf x > /.open-compute-exec/helper; then exit 79; fi; test \"$(cat /sys/fs/cgroup/memory.max)\" = 67108864; test \"$(cat /sys/fs/cgroup/pids.max)\" = 16; read quota period < /sys/fs/cgroup/cpu.max; test \"$quota\" != max; test \"$((quota * 16))\" -eq \"$period\"; test \"$(ulimit -n)\" = 64; if result=$(dd if=/dev/zero of=/quota-probe bs=1048576 count=17 2>&1); then exit 77; fi; case \"$result\" in *'No space left on device'*) ;; *) exit 78;; esac; test \"$(stat -c %s /quota-probe)\" -le 16777216; : > /quota-probe; umask 027; printf %s \"$OPEN_COMPUTE_QUALIFICATION_NONCE\" > /run/open-compute-snapshot-probe; printf %s \"$OPEN_COMPUTE_QUALIFICATION_NONCE\" > /open-compute-snapshot-probe.pending; mv /open-compute-snapshot-probe.pending /open-compute-snapshot-probe; while :; do :; done";
 
 impl Engine {
     pub(super) async fn probe_resources(
@@ -23,9 +24,8 @@ impl Engine {
         }
         let name = format!("oc-qualification-{}", uuid::Uuid::new_v4());
         let nonce = uuid::Uuid::new_v4().to_string();
-        let command = "set -eu; if mv /.open-compute-exec /.open-compute-exec-moved; then exit 80; fi; if printf x > /.open-compute-exec/helper; then exit 79; fi; test \"$(cat /sys/fs/cgroup/memory.max)\" = 67108864; test \"$(cat /sys/fs/cgroup/pids.max)\" = 16; read quota period < /sys/fs/cgroup/cpu.max; test \"$quota\" != max; test \"$((quota * 16))\" -eq \"$period\"; test \"$(ulimit -n)\" = 64; if result=$(dd if=/dev/zero of=/quota-probe bs=1048576 count=17 2>&1); then exit 77; fi; case \"$result\" in *'No space left on device'*) ;; *) exit 78;; esac; test \"$(stat -c %s /quota-probe)\" -le 16777216; : > /quota-probe; umask 027; printf %s \"$OPEN_COMPUTE_QUALIFICATION_NONCE\" > /run/open-compute-snapshot-probe; printf %s \"$OPEN_COMPUTE_QUALIFICATION_NONCE\" > /open-compute-snapshot-probe; while :; do :; done";
         let request = json!({
-            "Image":config.qualification_image, "User":"0", "Entrypoint":["/bin/sh"], "Cmd":["-c",command],
+            "Image":config.qualification_image, "User":"0", "Entrypoint":["/bin/sh"], "Cmd":["-c",RESOURCE_PROBE_COMMAND],
             "Env":[format!("OPEN_COMPUTE_QUALIFICATION_NONCE={nonce}")],
             "HostConfig":{"NetworkMode":"none","NanoCpus":62_500_000,"Memory":67_108_864,"MemorySwap":67_108_864,
                 "PidsLimit":16,"Ulimits":[{"Name":"nofile","Soft":64,"Hard":64}],"Tmpfs":policy::run_tmpfs(67_108_864),
@@ -290,3 +290,7 @@ fn archive_proof(
     }
     Ok(root)
 }
+
+#[cfg(test)]
+#[path = "resources_tests.rs"]
+mod tests;
