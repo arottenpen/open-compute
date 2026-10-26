@@ -33,7 +33,7 @@ pub(crate) fn require_absolute(path: &Path) -> Result<(), PlatformError> {
 
 pub(crate) fn create_dir_secure(path: &Path) -> Result<(), PlatformError> {
     match fs::DirBuilder::new().mode(DIR_MODE).create(path) {
-        Ok(()) => {}
+        Ok(()) => chmod(path, DIR_MODE)?,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(_) => {
             return Err(PlatformError::new(

@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn secure_directory_creation_restores_owner_access_under_a_restrictive_umask() {
+    const ROOT_ENV: &str = "OPEN_COMPUTE_STORAGE_DIRECTORY_TEST_ROOT";
+    if let Some(path) = std::env::var_os(ROOT_ENV) {
+        let directory = PathBuf::from(path);
+        sfs::create_dir_secure(&directory).unwrap();
+        assert_eq!(
+            fs::metadata(directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        return;
+    }
+    let tmp = TempDir::new().unwrap();
+    let output = Command::new("sh")
+        .args(["-c", "umask 0777; exec \"$@\"", "directory-umask-test"])
+        .arg(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "tests::filesystem_helpers_cover_secure_success_and_failure_paths::secure_directory_creation_restores_owner_access_under_a_restrictive_umask",
+        ])
+        .env(ROOT_ENV, tmp.path().join("owned"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn secure_directory_creation_is_shared_by_concurrent_writers() {
     let tmp = TempDir::new().unwrap();
     let directory = tmp.path().join("shared");
