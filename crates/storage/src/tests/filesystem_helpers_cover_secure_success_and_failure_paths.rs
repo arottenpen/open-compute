@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn secure_directory_creation_is_shared_by_concurrent_writers() {
+    let tmp = TempDir::new().unwrap();
+    let directory = tmp.path().join("shared");
+    let barrier = Barrier::new(20);
+    thread::scope(|scope| {
+        let writers = (0..20)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    sfs::create_dir_secure(&directory)
+                })
+            })
+            .collect::<Vec<_>>();
+        for writer in writers {
+            writer.join().unwrap().unwrap();
+        }
+    });
+    assert_eq!(
+        fs::metadata(directory).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+}
+
+#[test]
 fn filesystem_helpers_cover_secure_success_and_failure_paths() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("root");
@@ -21,6 +45,7 @@ fn filesystem_helpers_cover_secure_success_and_failure_paths() {
     sfs::ensure_file_secure(&file).unwrap();
     sfs::ensure_file_secure(&file).unwrap();
     assert!(sfs::validate_owned_file(&file, true).is_ok());
+    assert!(sfs::create_dir_secure(&file).is_err());
     assert!(sfs::validate_owned_dir(&file).is_err());
     assert!(sfs::validate_owned_file(&owned_dir, true).is_err());
 
@@ -35,9 +60,18 @@ fn filesystem_helpers_cover_secure_success_and_failure_paths() {
 
     let link = root.join("link");
     std::os::unix::fs::symlink(&file, &link).unwrap();
+    assert!(sfs::create_dir_secure(&link).is_err());
     assert!(sfs::validate_owned_file(&link, true).is_err());
     assert!(sfs::open_nofollow(&link, false, false).is_err());
     assert!(sfs::validate_contained(&root, &link).is_err());
+    let writable_dir = root.join("writable");
+    fs::create_dir(&writable_dir).unwrap();
+    fs::set_permissions(&writable_dir, fs::Permissions::from_mode(0o777)).unwrap();
+    assert!(sfs::create_dir_secure(&writable_dir).is_err());
+    assert_eq!(
+        fs::metadata(writable_dir).unwrap().permissions().mode() & 0o777,
+        0o777
+    );
 
     let opened = sfs::open_nofollow(&file, false, false).unwrap();
     sfs::validate_authority_fd(&opened).unwrap();
