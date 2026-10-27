@@ -32,6 +32,10 @@ function fixtureErrorCode(error: unknown): string | null {
   return (
     [
       "DO_RUNTIME_EXCEPTION",
+      "DO_VERSION_STALE",
+      "DO_OBJECT_DELETING",
+      "DO_STORAGE_UNAVAILABLE",
+      "VERSION_INVARIANT_VIOLATION",
       "DO_ID_INVALID",
       "DO_NAMESPACE_NOT_FOUND",
       "DO_INTERNAL_PROTOCOL_ERROR",

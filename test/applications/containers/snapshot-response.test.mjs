@@ -349,3 +349,81 @@ for (const [message, category] of [
     assert.ok(!JSON.stringify(body).includes(message));
   });
 }
+
+test("named dispatch diagnostics preserve stable codes without upstream details", async () => {
+  const imports = {
+    "@cloudflare/containers":
+      "export class Container {} export class ContainerProxy {}",
+    "./exec-lifecycle": "export const execLifecycle = () => {};",
+    "./exec-users-lifecycle": "export const execUsersLifecycle = () => {};",
+    "./inactivity-lifecycle": "export class RawIdleContainer {}",
+    "./named-images": "export class NamedImageContainer {}",
+    "./network-lifecycle": "export const networkLifecycle = () => {};",
+  };
+  const { default: fixture } = await import(
+    url(
+      await compileRuntime(
+        "../../../test/applications/containers/src/index.ts",
+        Object.fromEntries(
+          Object.entries(imports).map(([name, source]) => [name, url(source)]),
+        ),
+      ),
+    )
+  );
+  for (const code of [
+    "DO_VERSION_STALE",
+    "DO_OBJECT_DELETING",
+    "DO_STORAGE_UNAVAILABLE",
+    "VERSION_INVARIANT_VIOLATION",
+  ]) {
+    for (const point of ["getByName", "fetch"]) {
+      const response = await fixture.fetch(
+        new Request("http://fixture/named/directory/surface"),
+        {
+          NAMED_OBJECTS: {
+            getByName() {
+              if (point === "getByName") throw new Error(code);
+              return {
+                async fetch() {
+                  throw new Error(code);
+                },
+              };
+            },
+          },
+        },
+      );
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), {
+        ok: false,
+        diagnostic: "controlled-fixture",
+        phase: "named-object-dispatch-or-construction",
+        nativeErrorCode: code,
+        nativeErrorClass: "Error",
+      });
+    }
+  }
+  for (const [fault, kind] of [
+    [new Error("private/token/detail"), "Error"],
+    [new TypeError("private/raw/detail"), "TypeError"],
+    ["private/thrown/detail", "Unknown"],
+  ]) {
+    const response = await fixture.fetch(
+      new Request("http://fixture/named/directory/surface"),
+      {
+        NAMED_OBJECTS: {
+          getByName() {
+            throw fault;
+          },
+        },
+      },
+    );
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      diagnostic: "controlled-fixture",
+      phase: "named-object-dispatch-or-construction",
+      nativeErrorCode: null,
+      nativeErrorClass: kind,
+    });
+  }
+});
